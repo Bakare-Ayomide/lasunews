@@ -1,0 +1,332 @@
+/* ==========================================================================
+   LASU Campus Broadcast — Admin Dashboard Stylesheet (CSS3)
+   ========================================================================== */
+
+:root {
+  --lasu-navy: #0B2545;
+  --lasu-navy-hover: #13315C;
+  --lasu-gold: #E5C158;
+  --lasu-paper: #FAF9F6;
+  --lasu-surface: #FFFFFF;
+  --lasu-border: #E5E2DC;
+  --lasu-ink: #14181F;
+  --lasu-muted: #525866;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF UI Text", "San Francisco", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--lasu-paper);
+  color: var(--lasu-ink);
+}
+
+h1, h2, h3 {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF UI Display", "San Francisco", system-ui, "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.tabular-nums { font-variant-numeric: tabular-nums; }
+.font-mono { font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+
+/* Login Screen */
+.login-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 430px;
+  background: var(--lasu-surface);
+  border: 1px solid var(--lasu-border);
+  border-radius: 0.5rem;
+  padding: 2rem;
+}
+
+/* Dashboard Layout */
+.admin-layout {
+  min-height: 100vh;
+  display: flex;
+}
+
+.admin-sidebar {
+  width: 260px;
+  background: var(--lasu-navy);
+  color: #E2E8F0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1023px) {
+  .admin-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  .admin-sidebar.is-open {
+    transform: translateX(0);
+  }
+}
+
+.sidebar-brand {
+  height: 4rem;
+  padding: 0 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "San Francisco", system-ui, sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.sidebar-nav {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sidebar-btn {
+  width: 100%;
+  text-align: left;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  color: #CBD5E1;
+  background: transparent;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebar-btn:hover,
+.sidebar-btn.is-active {
+  background: rgba(255, 255, 255, 0.14);
+  color: #FFFFFF;
+}
+
+.sidebar-footer {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 0.75rem;
+}
+
+.admin-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-topbar {
+  height: 4rem;
+  background: var(--lasu-surface);
+  border-bottom: 1px solid var(--lasu-border);
+  padding: 0 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.admin-content {
+  padding: 1.5rem;
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .kpi-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+.panel {
+  background: var(--lasu-surface);
+  border: 1px solid var(--lasu-border);
+  border-radius: 0.375rem;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+
+.panel-head {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--lasu-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-body {
+  padding: 1.25rem;
+}
+
+.stat-box {
+  background: var(--lasu-surface);
+  border: 1px solid var(--lasu-border);
+  border-radius: 0.375rem;
+  padding: 1rem;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: var(--lasu-muted);
+}
+
+.stat-num {
+  margin-top: 0.35rem;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "San Francisco", system-ui, sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.split-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .split-grid {
+    grid-template-columns: 7fr 5fr;
+  }
+}
+
+.data-table-wrap {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.data-table th {
+  padding: 0.7rem 1rem;
+  background: var(--lasu-paper);
+  border-bottom: 1px solid var(--lasu-border);
+  color: var(--lasu-muted);
+  font-weight: 600;
+}
+
+.data-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #F1EFEA;
+  vertical-align: middle;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: inherit;
+  border-radius: 0.375rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.btn-primary { background: var(--lasu-navy); color: #FFFFFF; }
+.btn-primary:hover { background: var(--lasu-navy-hover); }
+.btn-outline { background: #FFFFFF; color: var(--lasu-ink); border-color: #D1CCC4; }
+.btn-outline:hover { background: #F4F2EE; }
+.btn-danger { background: transparent; color: #B91C1C; border-color: #FECACA; }
+.btn-danger:hover { background: #FEF2F2; }
+
+.input, .select, .textarea {
+  width: 100%;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  border: 1px solid #D1CCC4;
+  border-radius: 0.375rem;
+  background: var(--lasu-paper);
+}
+
+.form-group { margin-bottom: 1rem; }
+.form-label { display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 0.35rem; }
+
+.alert {
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  margin-bottom: 1rem;
+}
+.alert-success { background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; }
+.alert-error { background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA; }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-backdrop[hidden] { display: none; }
+
+.modal-card {
+  background: #FFFFFF;
+  border: 1px solid var(--lasu-border);
+  border-radius: 0.5rem;
+  width: 100%;
+  max-width: 720px;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.toolbar-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .toolbar-grid {
+    grid-template-columns: 5fr 2fr 3fr 2fr;
+  }
+}
+
+.status-published { color: #047857; font-weight: 600; }
+.status-draft { color: #B45309; font-weight: 600; }
+
+@media (min-width: 1024px) {
+  .mobile-only { display: none; }
+}

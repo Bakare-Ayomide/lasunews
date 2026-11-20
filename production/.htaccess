@@ -1,0 +1,36 @@
+# LASU Campus Broadcast - Apache Production Configuration (cPanel)
+Options -Indexes
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Protect sensitive internal directories and configuration files
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Block direct browser access to internal folders & SQL/markdown files
+    RewriteRule ^(config|database|includes)/ - [F,L]
+    RewriteRule \.(sql|md|log|ini)$ - [F,L]
+
+    # Clean URL routes for public pages
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^article/([a-zA-Z0-9-]+)/?$ article.php?slug=$1 [L,QSA]
+
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^news/?$ news.php [L,QSA]
+
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^announcements/?$ announcements.php [L,QSA]
+</IfModule>
+
+# Disable PHP execution inside uploads if mod_php is active
+<FilesMatch "\.(php|phtml|phar|cgi|pl|py|sh)$">
+    # Handled strictly inside uploads/.htaccess; keep root PHP executable
+</FilesMatch>

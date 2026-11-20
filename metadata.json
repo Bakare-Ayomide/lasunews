@@ -1,0 +1,8 @@
+{
+  "name": "LASU Campus Broadcast",
+  "description": "Web-based Campus News Broadcasting System and Editorial Portal for Lagos State University (Ojo, Epe & Ikeja Campuses).",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
