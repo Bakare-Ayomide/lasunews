@@ -63,14 +63,18 @@ $relStmt = $pdo->prepare(
 $relStmt->execute([(int) $article['id'], (int) $article['category_id']]);
 $related = $relStmt->fetchAll();
 
-// Sidebar Ad + record impression
-$sidebarAds = $pdo->query("SELECT * FROM advertisements WHERE status = 'active' AND placement = 'sidebar_box' ORDER BY created_at DESC LIMIT 1")->fetchAll();
+// Sidebar Ads + record impressions
+$sidebarAds = fetch_active_ads($pdo, 'sidebar_box');
 record_ad_impressions($pdo, $sidebarAds);
-$sidebarAd = $sidebarAds[0] ?? null;
 
-$paragraphs = array_values(array_filter(
-    array_map('trim', preg_split('/\R{2,}/', (string) $article['content']) ?: [])
-));
+$rawContent = (string) ($article['content'] ?? '');
+$isRichContent = is_rich_html($rawContent);
+$sanitizedRichHtml = $isRichContent ? sanitize_article_html($rawContent) : '';
+$paragraphs = $isRichContent
+    ? []
+    : array_values(array_filter(
+        array_map('trim', preg_split('/\R{2,}/', $rawContent) ?: [])
+    ));
 
 $shareUrl = urlencode(full_url_for('/article.php?slug=' . urlencode((string) $article['slug'])));
 $shareTitle = urlencode((string) $article['title']);
@@ -131,9 +135,13 @@ require __DIR__ . '/includes/header.php';
         <?php endif; ?>
 
         <div class="article-prose">
-          <?php foreach ($paragraphs as $para): ?>
-            <p><?= nl2br(e($para)) ?></p>
-          <?php endforeach; ?>
+          <?php if ($isRichContent): ?>
+            <?= $sanitizedRichHtml ?>
+          <?php else: ?>
+            <?php foreach ($paragraphs as $para): ?>
+              <p><?= nl2br(e($para)) ?></p>
+            <?php endforeach; ?>
+          <?php endif; ?>
         </div>
 
         <!-- Campus Discussion & Comment Moderation -->
@@ -197,25 +205,31 @@ require __DIR__ . '/includes/header.php';
       </div>
 
       <aside>
-        <?php if ($sidebarAd): ?>
-          <div class="ad-box">
-            <div class="ad-box-label">
-              <span>Sponsored Notice</span>
-              <span><?= e($sidebarAd['advertiser_name']) ?></span>
-            </div>
-            <a href="<?= !empty($sidebarAd['target_url']) ? e(url_for('/ad_click.php?id=' . (int) $sidebarAd['id'])) : '#' ?>"
-               <?= !empty($sidebarAd['target_url']) ? 'target="_blank" rel="noopener noreferrer"' : '' ?>>
-              <?php if (!empty($sidebarAd['image_url'])): ?>
-                <img src="<?= e(media_url($sidebarAd['image_url'])) ?>" alt="<?= e($sidebarAd['title']) ?>" class="media-4x3" style="width:100%;object-fit:cover;">
-              <?php else: ?>
-                <div style="padding:1.25rem;background:var(--lasu-navy);color:#fff;">
-                  <div style="font-family:var(--font-serif);font-size:1.1rem;font-weight:700;"><?= e($sidebarAd['title']) ?></div>
+        <?php if (!empty($sidebarAds)): ?>
+          <div class="ad-slots-stack" style="margin-bottom:1.5rem;" data-ad-group="sidebar_box">
+            <?php foreach ($sidebarAds as $sidebarAd):
+              $expMs = ad_expires_at_ms($sidebarAd['expires_at'] ?? null);
+            ?>
+              <div class="ad-box" data-ad-slot="sidebar_box" <?= $expMs !== null ? 'data-ad-expires-ms="' . $expMs . '"' : '' ?>>
+                <div class="ad-box-label">
+                  <span>Sponsored Notice</span>
+                  <span><?= e($sidebarAd['advertiser_name']) ?></span>
                 </div>
-              <?php endif; ?>
-              <div style="padding:0.7rem 0.9rem;border-top:1px solid var(--lasu-border-soft);font-size:0.78rem;font-weight:600;">
-                <?= e($sidebarAd['title']) ?>
+                <a href="<?= !empty($sidebarAd['target_url']) ? e(url_for('/ad_click.php?id=' . (int) $sidebarAd['id'])) : '#' ?>"
+                   <?= !empty($sidebarAd['target_url']) ? 'target="_blank" rel="noopener noreferrer"' : '' ?>>
+                  <?php if (!empty($sidebarAd['image_url'])): ?>
+                    <img src="<?= e(media_url($sidebarAd['image_url'])) ?>" alt="<?= e($sidebarAd['title']) ?>" class="media-4x3" style="width:100%;object-fit:cover;">
+                  <?php else: ?>
+                    <div style="padding:1.25rem;background:var(--lasu-navy);color:#fff;">
+                      <div style="font-family:var(--font-serif);font-size:1.1rem;font-weight:700;"><?= e($sidebarAd['title']) ?></div>
+                    </div>
+                  <?php endif; ?>
+                  <div style="padding:0.7rem 0.9rem;border-top:1px solid var(--lasu-border-soft);font-size:0.78rem;font-weight:600;">
+                    <?= e($sidebarAd['title']) ?>
+                  </div>
+                </a>
               </div>
-            </a>
+            <?php endforeach; ?>
           </div>
         <?php endif; ?>
 

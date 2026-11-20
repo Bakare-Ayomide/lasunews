@@ -57,8 +57,10 @@ require __DIR__ . '/includes/header.php';
     <?php if (empty($announcements)): ?>
       <div class="empty-box">
         <h3>No active announcements published</h3>
-        <p>Urgent circulars, academic notices, and Registrar announcements published by administrators will appear here.</p>
-        <a href="<?= e(url_for('/admin/login.php')) ?>" class="btn btn-primary btn-sm">Admin Portal</a>
+        <p>Urgent circulars, academic notices, and Registrar announcements will appear here once published.</p>
+        <?php if ($loggedAdmin): ?>
+          <a href="<?= e(url_for('/admin/index.php')) ?>" class="btn btn-primary btn-sm">Admin Portal</a>
+        <?php endif; ?>
       </div>
     <?php else: ?>
       <div class="grid-3">

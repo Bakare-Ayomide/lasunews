@@ -65,15 +65,17 @@ export function SiteHeader({ currentPath, onNavigate, currentAdmin }: SiteHeader
           })}
         </nav>
 
-        {/* Zone 3: 1 Primary Action */}
+        {/* Zone 3: Admin Action (only visible to authenticated admin/super_admin) + Mobile Menu */}
         <div className="flex items-center gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={() => handleLinkClick(currentAdmin ? '/admin' : '/admin/login')}
-            className="hidden sm:inline-flex items-center justify-center px-4 py-1.5 text-xs font-semibold text-white bg-[#0B2545] hover:bg-[#13315C] transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer min-h-[36px]"
-          >
-            {currentAdmin ? 'Dashboard' : 'Admin Portal'}
-          </button>
+          {currentAdmin && (currentAdmin.role === 'editor' || currentAdmin.role === 'super_admin') && (
+            <button
+              type="button"
+              onClick={() => handleLinkClick('/admin')}
+              className="hidden sm:inline-flex items-center justify-center px-4 py-1.5 text-xs font-semibold text-white bg-[#0B2545] hover:bg-[#13315C] transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer min-h-[36px]"
+            >
+              Admin Portal
+            </button>
+          )}
 
           <button
             type="button"
@@ -99,15 +101,17 @@ export function SiteHeader({ currentPath, onNavigate, currentAdmin }: SiteHeader
               {item.label}
             </button>
           ))}
-          <div className="pt-2 border-t border-stone-200">
-            <button
-              type="button"
-              onClick={() => handleLinkClick(currentAdmin ? '/admin' : '/admin/login')}
-              className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-[#0B2545] hover:bg-[#13315C] cursor-pointer"
-            >
-              {currentAdmin ? 'Admin Dashboard' : 'Admin Portal'}
-            </button>
-          </div>
+          {currentAdmin && (currentAdmin.role === 'editor' || currentAdmin.role === 'super_admin') && (
+            <div className="pt-2 border-t border-stone-200">
+              <button
+                type="button"
+                onClick={() => handleLinkClick('/admin')}
+                className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-[#0B2545] hover:bg-[#13315C] cursor-pointer"
+              >
+                Admin Portal
+              </button>
+            </div>
+          )}
         </div>
       )}
     </header>

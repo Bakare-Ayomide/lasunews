@@ -57,17 +57,17 @@ foreach ($categories as $cat) {
     ];
 }
 
-// Active Advertisements + real impression tracking
-$activeAds = $pdo->query("SELECT * FROM advertisements WHERE status = 'active' ORDER BY created_at DESC")->fetchAll();
+// Active non-expired Advertisements + real impression tracking
+$activeAds = fetch_active_ads($pdo);
 record_ad_impressions($pdo, $activeAds);
 
-$topAd = null;
-$inlineAd = null;
-$sidebarAd = null;
+$topAds = [];
+$inlineAds = [];
+$sidebarAds = [];
 foreach ($activeAds as $ad) {
-    if ($ad['placement'] === 'top_banner' && !$topAd) $topAd = $ad;
-    if ($ad['placement'] === 'inline_banner' && !$inlineAd) $inlineAd = $ad;
-    if ($ad['placement'] === 'sidebar_box' && !$sidebarAd) $sidebarAd = $ad;
+    if ($ad['placement'] === 'top_banner') $topAds[] = $ad;
+    if ($ad['placement'] === 'inline_banner') $inlineAds[] = $ad;
+    if ($ad['placement'] === 'sidebar_box') $sidebarAds[] = $ad;
 }
 
 $statsRow = $pdo->query(
@@ -213,9 +213,15 @@ require __DIR__ . '/includes/header.php';
             </p>
           </div>
           <div class="hero-dark-footer">
-            <a href="<?= e(url_for('/admin/login.php')) ?>" class="btn btn-sm" style="background:var(--lasu-gold);color:#fff;">
-              Publish First Broadcast &rarr;
-            </a>
+            <?php if ($loggedAdmin): ?>
+              <a href="<?= e(url_for('/admin/index.php')) ?>" class="btn btn-sm" style="background:var(--lasu-gold);color:#fff;">
+                Publish First Broadcast &rarr;
+              </a>
+            <?php else: ?>
+              <a href="<?= e(url_for('/news.php')) ?>" class="btn btn-sm" style="background:var(--lasu-gold);color:#fff;">
+                Browse News Archive &rarr;
+              </a>
+            <?php endif; ?>
             <span class="font-mono tabular-nums" style="font-size:0.75rem;color:#CBD5E1;">0 Published</span>
           </div>
         <?php endif; ?>
@@ -237,9 +243,11 @@ require __DIR__ . '/includes/header.php';
           <div class="empty-box" style="text-align:left;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:1rem;">
             <div>
               <h3>Featured Story Slots Ready</h3>
-              <p style="margin:0;">Publish additional articles or mark stories as Featured in the Admin Dashboard to populate this 2&times;2 broadsheet grid.</p>
+              <p style="margin:0;">Featured campus stories selected by the editorial desk will appear in this 2&times;2 broadsheet grid.</p>
             </div>
-            <a href="<?= e(url_for('/admin/login.php')) ?>" class="btn btn-primary btn-sm">Open Editor</a>
+            <?php if ($loggedAdmin): ?>
+              <a href="<?= e(url_for('/admin/index.php')) ?>" class="btn btn-primary btn-sm">Open Editor</a>
+            <?php endif; ?>
           </div>
         <?php else: ?>
           <div class="featured-2x2">
@@ -276,30 +284,36 @@ require __DIR__ . '/includes/header.php';
   </div>
 </section>
 
-<!-- Top Leaderboard Advertisement Slot -->
-<?php if ($topAd): ?>
-<div class="container" style="padding-top:2rem;">
-  <div class="ad-box" style="margin-bottom:0;">
-    <div class="ad-box-label">
-      <span>Campus Advertisement</span>
-      <span><?= e($topAd['advertiser_name']) ?></span>
-    </div>
-    <a href="<?= !empty($topAd['target_url']) ? e(url_for('/ad_click.php?id=' . (int) $topAd['id'])) : '#' ?>"
-       <?= !empty($topAd['target_url']) ? 'target="_blank" rel="noopener noreferrer"' : '' ?>>
-      <?php if (!empty($topAd['image_url'])): ?>
-        <img src="<?= e(media_url($topAd['image_url'])) ?>" alt="<?= e($topAd['title']) ?>" style="width:100%;max-height:140px;object-fit:cover;">
-      <?php else: ?>
-        <div style="padding:1rem 1.5rem;background:var(--lasu-navy);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:1rem;">
-          <div>
-            <div style="font-size:0.72rem;text-transform:uppercase;color:var(--lasu-gold-soft);"><?= e($topAd['advertiser_name']) ?></div>
-            <div style="font-family:var(--font-serif);font-size:1.15rem;font-weight:700;"><?= e($topAd['title']) ?></div>
-          </div>
-          <?php if (!empty($topAd['target_url'])): ?>
-            <span class="btn btn-sm" style="background:var(--lasu-gold);color:#fff;">Visit Link &rarr;</span>
-          <?php endif; ?>
+<!-- Top Leaderboard Advertisement Slots -->
+<?php if (!empty($topAds)): ?>
+<div class="container" style="padding-top:2rem;" data-ad-group="top_banner">
+  <div class="ad-slots-grid">
+    <?php foreach ($topAds as $topAd):
+      $expMs = ad_expires_at_ms($topAd['expires_at'] ?? null);
+    ?>
+      <div class="ad-box" data-ad-slot="top_banner" <?= $expMs !== null ? 'data-ad-expires-ms="' . $expMs . '"' : '' ?>>
+        <div class="ad-box-label">
+          <span>Campus Advertisement</span>
+          <span><?= e($topAd['advertiser_name']) ?></span>
         </div>
-      <?php endif; ?>
-    </a>
+        <a href="<?= !empty($topAd['target_url']) ? e(url_for('/ad_click.php?id=' . (int) $topAd['id'])) : '#' ?>"
+           <?= !empty($topAd['target_url']) ? 'target="_blank" rel="noopener noreferrer"' : '' ?>>
+          <?php if (!empty($topAd['image_url'])): ?>
+            <img src="<?= e(media_url($topAd['image_url'])) ?>" alt="<?= e($topAd['title']) ?>" style="width:100%;max-height:140px;object-fit:cover;">
+          <?php else: ?>
+            <div style="padding:1rem 1.5rem;background:var(--lasu-navy);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:1rem;">
+              <div>
+                <div style="font-size:0.72rem;text-transform:uppercase;color:var(--lasu-gold-soft);"><?= e($topAd['advertiser_name']) ?></div>
+                <div style="font-family:var(--font-serif);font-size:1.15rem;font-weight:700;"><?= e($topAd['title']) ?></div>
+              </div>
+              <?php if (!empty($topAd['target_url'])): ?>
+                <span class="btn btn-sm" style="background:var(--lasu-gold);color:#fff;">Visit Link &rarr;</span>
+              <?php endif; ?>
+            </div>
+          <?php endif; ?>
+        </a>
+      </div>
+    <?php endforeach; ?>
   </div>
 </div>
 <?php endif; ?>
@@ -388,8 +402,10 @@ require __DIR__ . '/includes/header.php';
           <?php if (empty($latest)): ?>
             <div class="empty-box">
               <h3>No published broadcasts in this feed yet</h3>
-              <p>Publish articles from the Administrator Dashboard and they will appear here immediately.</p>
-              <a href="<?= e(url_for('/admin/login.php')) ?>" class="btn btn-primary btn-sm">Open Admin Portal</a>
+              <p>Campus dispatches and official bulletins will appear here as soon as they are published.</p>
+              <?php if ($loggedAdmin): ?>
+                <a href="<?= e(url_for('/admin/index.php')) ?>" class="btn btn-primary btn-sm">Admin Portal</a>
+              <?php endif; ?>
             </div>
           <?php else: ?>
             <div class="story-list">
@@ -427,29 +443,35 @@ require __DIR__ . '/includes/header.php';
           <?php endif; ?>
         </div>
 
-        <!-- Inline Advertisement Slot -->
-        <?php if ($inlineAd): ?>
-          <div class="ad-box" style="margin-top:1.75rem;margin-bottom:0;">
-            <div class="ad-box-label">
-              <span>Campus Advertisement</span>
-              <span><?= e($inlineAd['advertiser_name']) ?></span>
-            </div>
-            <a href="<?= !empty($inlineAd['target_url']) ? e(url_for('/ad_click.php?id=' . (int) $inlineAd['id'])) : '#' ?>"
-               <?= !empty($inlineAd['target_url']) ? 'target="_blank" rel="noopener noreferrer"' : '' ?>>
-              <?php if (!empty($inlineAd['image_url'])): ?>
-                <img src="<?= e(media_url($inlineAd['image_url'])) ?>" alt="<?= e($inlineAd['title']) ?>" style="width:100%;max-height:140px;object-fit:cover;">
-              <?php else: ?>
-                <div style="padding:1rem 1.5rem;background:var(--lasu-navy);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:1rem;">
-                  <div>
-                    <div style="font-size:0.72rem;text-transform:uppercase;color:var(--lasu-gold-soft);"><?= e($inlineAd['advertiser_name']) ?></div>
-                    <div style="font-family:var(--font-serif);font-size:1.15rem;font-weight:700;"><?= e($inlineAd['title']) ?></div>
-                  </div>
-                  <?php if (!empty($inlineAd['target_url'])): ?>
-                    <span class="btn btn-sm" style="background:var(--lasu-gold);color:#fff;">Visit Link &rarr;</span>
-                  <?php endif; ?>
+        <!-- Inline Advertisement Slots -->
+        <?php if (!empty($inlineAds)): ?>
+          <div class="ad-slots-stack" style="margin-top:1.75rem;" data-ad-group="inline_banner">
+            <?php foreach ($inlineAds as $inlineAd):
+              $expMs = ad_expires_at_ms($inlineAd['expires_at'] ?? null);
+            ?>
+              <div class="ad-box" data-ad-slot="inline_banner" <?= $expMs !== null ? 'data-ad-expires-ms="' . $expMs . '"' : '' ?>>
+                <div class="ad-box-label">
+                  <span>Campus Advertisement</span>
+                  <span><?= e($inlineAd['advertiser_name']) ?></span>
                 </div>
-              <?php endif; ?>
-            </a>
+                <a href="<?= !empty($inlineAd['target_url']) ? e(url_for('/ad_click.php?id=' . (int) $inlineAd['id'])) : '#' ?>"
+                   <?= !empty($inlineAd['target_url']) ? 'target="_blank" rel="noopener noreferrer"' : '' ?>>
+                  <?php if (!empty($inlineAd['image_url'])): ?>
+                    <img src="<?= e(media_url($inlineAd['image_url'])) ?>" alt="<?= e($inlineAd['title']) ?>" style="width:100%;max-height:140px;object-fit:cover;">
+                  <?php else: ?>
+                    <div style="padding:1rem 1.5rem;background:var(--lasu-navy);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:1rem;">
+                      <div>
+                        <div style="font-size:0.72rem;text-transform:uppercase;color:var(--lasu-gold-soft);"><?= e($inlineAd['advertiser_name']) ?></div>
+                        <div style="font-family:var(--font-serif);font-size:1.15rem;font-weight:700;"><?= e($inlineAd['title']) ?></div>
+                      </div>
+                      <?php if (!empty($inlineAd['target_url'])): ?>
+                        <span class="btn btn-sm" style="background:var(--lasu-gold);color:#fff;">Visit Link &rarr;</span>
+                      <?php endif; ?>
+                    </div>
+                  <?php endif; ?>
+                </a>
+              </div>
+            <?php endforeach; ?>
           </div>
         <?php endif; ?>
       </div>
@@ -515,35 +537,42 @@ require __DIR__ . '/includes/header.php';
           </div>
         </div>
 
-        <!-- Sidebar Advertisement Box -->
-        <?php if ($sidebarAd): ?>
-          <div class="ad-box">
-            <div class="ad-box-label">
-              <span>Sponsored Notice</span>
-              <span><?= e($sidebarAd['advertiser_name']) ?></span>
-            </div>
-            <a href="<?= !empty($sidebarAd['target_url']) ? e(url_for('/ad_click.php?id=' . (int) $sidebarAd['id'])) : '#' ?>"
-               <?= !empty($sidebarAd['target_url']) ? 'target="_blank" rel="noopener noreferrer"' : '' ?>>
-              <?php if (!empty($sidebarAd['image_url'])): ?>
-                <img src="<?= e(media_url($sidebarAd['image_url'])) ?>" alt="<?= e($sidebarAd['title']) ?>" class="media-4x3" style="width:100%;object-fit:cover;">
-              <?php else: ?>
-                <div style="padding:1.25rem;background:var(--lasu-navy);color:#fff;">
-                  <div style="font-family:var(--font-serif);font-size:1.1rem;font-weight:700;"><?= e($sidebarAd['title']) ?></div>
-                  <div style="font-size:0.75rem;color:var(--lasu-gold-soft);margin-top:0.35rem;">Learn more &rarr;</div>
+        <!-- Sidebar Advertisement Boxes -->
+        <?php if (!empty($sidebarAds)): ?>
+          <div class="ad-slots-stack" style="margin-bottom:1.5rem;" data-ad-group="sidebar_box" data-ad-fallback-target="homeSidebarAdFallback">
+            <?php foreach ($sidebarAds as $sidebarAd):
+              $expMs = ad_expires_at_ms($sidebarAd['expires_at'] ?? null);
+            ?>
+              <div class="ad-box" data-ad-slot="sidebar_box" <?= $expMs !== null ? 'data-ad-expires-ms="' . $expMs . '"' : '' ?>>
+                <div class="ad-box-label">
+                  <span>Sponsored Notice</span>
+                  <span><?= e($sidebarAd['advertiser_name']) ?></span>
                 </div>
-              <?php endif; ?>
-              <div style="padding:0.7rem 0.9rem;border-top:1px solid var(--lasu-border-soft);font-size:0.78rem;font-weight:600;">
-                <?= e($sidebarAd['title']) ?>
+                <a href="<?= !empty($sidebarAd['target_url']) ? e(url_for('/ad_click.php?id=' . (int) $sidebarAd['id'])) : '#' ?>"
+                   <?= !empty($sidebarAd['target_url']) ? 'target="_blank" rel="noopener noreferrer"' : '' ?>>
+                  <?php if (!empty($sidebarAd['image_url'])): ?>
+                    <img src="<?= e(media_url($sidebarAd['image_url'])) ?>" alt="<?= e($sidebarAd['title']) ?>" class="media-4x3" style="width:100%;object-fit:cover;">
+                  <?php else: ?>
+                    <div style="padding:1.25rem;background:var(--lasu-navy);color:#fff;">
+                      <div style="font-family:var(--font-serif);font-size:1.1rem;font-weight:700;"><?= e($sidebarAd['title']) ?></div>
+                      <div style="font-size:0.75rem;color:var(--lasu-gold-soft);margin-top:0.35rem;">Learn more &rarr;</div>
+                    </div>
+                  <?php endif; ?>
+                  <div style="padding:0.7rem 0.9rem;border-top:1px solid var(--lasu-border-soft);font-size:0.78rem;font-weight:600;">
+                    <?= e($sidebarAd['title']) ?>
+                  </div>
+                </a>
               </div>
-            </a>
-          </div>
-        <?php else: ?>
-          <div class="ad-fallback-slot">
-            <p style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--lasu-muted);">Campus Advertisement Space</p>
-            <p style="font-size:0.78rem;color:var(--lasu-muted);margin:0.4rem 0 0.7rem;">No active sidebar campaign. Publish banners from the Admin Dashboard.</p>
-            <a href="<?= e(url_for('/admin/login.php')) ?>" class="text-link">Manage Ads</a>
+            <?php endforeach; ?>
           </div>
         <?php endif; ?>
+        <div id="homeSidebarAdFallback" class="ad-fallback-slot" <?= !empty($sidebarAds) ? 'hidden' : '' ?>>
+          <p style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--lasu-muted);">Campus Advertisement Space</p>
+          <p style="font-size:0.78rem;color:var(--lasu-muted);margin:0.4rem 0 0.7rem;">Sponsored campus notices and departmental campaigns appear here.</p>
+          <?php if ($loggedAdmin): ?>
+            <a href="<?= e(url_for('/admin/index.php')) ?>" class="text-link">Manage Ads</a>
+          <?php endif; ?>
+        </div>
       </aside>
     </div>
   </div>

@@ -4,6 +4,7 @@
  */
 declare(strict_types=1);
 
+$loggedAdmin = $loggedAdmin ?? (function_exists('current_admin') ? current_admin() : null);
 $footerCategories = $footerCategories ?? [];
 if (empty($footerCategories)) {
     try {
@@ -58,7 +59,9 @@ if (empty($footerCategories)) {
 
       <div class="footer-bottom">
         <p>&copy; <?= date('Y') ?> Lagos State University — Directorate of Information &amp; Campus Broadcasting.</p>
-        <a href="<?= e(url_for('/admin/login.php')) ?>">Editorial Staff Login</a>
+        <?php if ($loggedAdmin): ?>
+          <a href="<?= e(url_for('/admin/index.php')) ?>">Admin Portal</a>
+        <?php endif; ?>
       </div>
     </div>
   </footer>

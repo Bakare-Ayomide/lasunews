@@ -105,6 +105,10 @@ export function initializeDatabase(): void {
       target_url TEXT NOT NULL DEFAULT '',
       placement TEXT NOT NULL DEFAULT 'sidebar_box' CHECK(placement IN ('top_banner', 'sidebar_box', 'inline_banner')),
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused')),
+      duration_value INTEGER,
+      duration_unit TEXT NOT NULL DEFAULT 'none' CHECK(duration_unit IN ('none', 'seconds', 'minutes', 'hours', 'days', 'months')),
+      expires_at TEXT,
+      display_order INTEGER NOT NULL DEFAULT 0,
       impressions INTEGER NOT NULL DEFAULT 0,
       clicks INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -144,6 +148,10 @@ export function initializeDatabase(): void {
   // Safe migrations for existing SQLite files BEFORE creating indexes on new columns
   ensureColumn('categories', 'color_hex', "TEXT NOT NULL DEFAULT '#0B2545'");
   ensureColumn('articles', 'is_breaking', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('advertisements', 'duration_value', 'INTEGER');
+  ensureColumn('advertisements', 'duration_unit', "TEXT NOT NULL DEFAULT 'none'");
+  ensureColumn('advertisements', 'expires_at', 'TEXT');
+  ensureColumn('advertisements', 'display_order', 'INTEGER NOT NULL DEFAULT 0');
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_articles_status_pub ON articles(status, published_at DESC);
@@ -153,7 +161,7 @@ export function initializeDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_articles_announcement ON articles(is_announcement, status);
     CREATE INDEX IF NOT EXISTS idx_articles_views ON articles(views DESC);
     CREATE INDEX IF NOT EXISTS idx_comments_article_status ON comments(article_id, status);
-    CREATE INDEX IF NOT EXISTS idx_ads_placement_status ON advertisements(placement, status);
+    CREATE INDEX IF NOT EXISTS idx_ads_placement_status ON advertisements(placement, status, expires_at);
   `);
 
   const defaultColors: Record<string, string> = {

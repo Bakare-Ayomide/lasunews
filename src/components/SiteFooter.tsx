@@ -1,11 +1,12 @@
-import type { Category } from '../types.ts';
+import type { AdminUser, Category } from '../types.ts';
 
 interface SiteFooterProps {
   categories: Category[];
+  currentAdmin?: AdminUser | null;
   onNavigate: (path: string) => void;
 }
 
-export function SiteFooter({ categories, onNavigate }: SiteFooterProps) {
+export function SiteFooter({ categories, currentAdmin, onNavigate }: SiteFooterProps) {
   const year = new Date().getFullYear();
 
   return (
@@ -107,15 +108,17 @@ export function SiteFooter({ categories, onNavigate }: SiteFooterProps) {
 
         <div className="pt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-stone-400">
           <p>© {year} Lagos State University — Directorate of Information &amp; Campus Broadcasting.</p>
-          <div className="flex items-center gap-6">
-            <button
-              type="button"
-              onClick={() => onNavigate('/admin/login')}
-              className="hover:text-white transition-colors cursor-pointer"
-            >
-              Editorial Staff Login
-            </button>
-          </div>
+          {currentAdmin && (currentAdmin.role === 'editor' || currentAdmin.role === 'super_admin') && (
+            <div className="flex items-center gap-6">
+              <button
+                type="button"
+                onClick={() => onNavigate('/admin')}
+                className="hover:text-white transition-colors cursor-pointer"
+              >
+                Admin Portal
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </footer>

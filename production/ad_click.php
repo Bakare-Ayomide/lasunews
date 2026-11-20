@@ -9,8 +9,8 @@ require_once __DIR__ . '/includes/helpers.php';
 $id = (int) ($_GET['id'] ?? 0);
 $pdo = lasu_db();
 
-$stmt = $pdo->prepare("SELECT id, target_url FROM advertisements WHERE id = ? AND status = 'active' LIMIT 1");
-$stmt->execute([$id]);
+$stmt = $pdo->prepare("SELECT id, target_url FROM advertisements WHERE id = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > ?) LIMIT 1");
+$stmt->execute([$id, date('Y-m-d H:i:s')]);
 $ad = $stmt->fetch();
 
 if (!$ad) {

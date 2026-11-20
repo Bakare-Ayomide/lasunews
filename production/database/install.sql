@@ -105,11 +105,15 @@ CREATE TABLE IF NOT EXISTS `advertisements` (
   `target_url` VARCHAR(500) NOT NULL DEFAULT '',
   `placement` ENUM('top_banner', 'sidebar_box', 'inline_banner') NOT NULL DEFAULT 'sidebar_box',
   `status` ENUM('active', 'paused') NOT NULL DEFAULT 'active',
+  `duration_value` INT UNSIGNED NULL DEFAULT NULL,
+  `duration_unit` ENUM('none', 'seconds', 'minutes', 'hours', 'days', 'months') NOT NULL DEFAULT 'none',
+  `expires_at` DATETIME NULL DEFAULT NULL,
+  `display_order` INT NOT NULL DEFAULT 0,
   `impressions` INT UNSIGNED NOT NULL DEFAULT 0,
   `clicks` INT UNSIGNED NOT NULL DEFAULT 0,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_ads_status_placement` (`status`, `placement`)
+  KEY `idx_ads_status_placement` (`status`, `placement`, `expires_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 7. Editorial Activity Logs Table

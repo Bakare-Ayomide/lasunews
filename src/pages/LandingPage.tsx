@@ -18,13 +18,14 @@ import {
 import { apiRequest, formatDate, estimateReadTime } from '../lib/api.ts';
 import { ArticleMedia } from '../components/ArticleMedia.tsx';
 import { AdSlot } from '../components/AdSlot.tsx';
-import type { Article, HomeData, PublicUser } from '../types.ts';
+import type { AdminUser, Article, HomeData, PublicUser } from '../types.ts';
 
 interface LandingPageProps {
   homeData: HomeData | null;
   loading: boolean;
   error: string | null;
   currentUser: PublicUser | null;
+  currentAdmin?: AdminUser | null;
   onNavigate: (path: string) => void;
   onRetry: () => void;
 }
@@ -34,6 +35,7 @@ export function LandingPage({
   loading,
   error,
   currentUser,
+  currentAdmin,
   onNavigate,
   onRetry,
 }: LandingPageProps) {
@@ -344,13 +346,22 @@ export function LandingPage({
                     Read Full Story
                     <ArrowRight className="w-4 h-4" />
                   </button>
-                ) : (
+                ) : currentAdmin ? (
                   <button
                     type="button"
-                    onClick={() => onNavigate('/admin/login')}
+                    onClick={() => onNavigate('/admin')}
                     className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-[#B8860B] text-white hover:bg-[#9E7208] cursor-pointer"
                   >
                     Publish First Broadcast
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('/news')}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-[#B8860B] text-white hover:bg-[#9E7208] cursor-pointer"
+                  >
+                    Browse News Archive
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 )}
@@ -405,16 +416,18 @@ export function LandingPage({
                       Featured Story Slots Ready
                     </h3>
                     <p className="text-sm text-[#525866]">
-                      Publish additional articles or mark stories as Featured in the Admin Dashboard to populate this 2×2 broadsheet grid.
+                      Featured campus stories selected by the editorial desk will appear in this 2×2 broadsheet grid.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('/admin/login')}
-                    className="px-4 py-2 text-xs font-semibold text-white bg-[#0B2545] whitespace-nowrap shrink-0 cursor-pointer"
-                  >
-                    Open Editor
-                  </button>
+                  {currentAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('/admin')}
+                      className="px-4 py-2 text-xs font-semibold text-white bg-[#0B2545] whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      Open Editor
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -463,8 +476,8 @@ export function LandingPage({
         </div>
       </section>
 
-      {/* Top Leaderboard Ad Slot */}
-      {ads.some((a) => a.placement === 'top_banner') && (
+      {/* Top Leaderboard Ad Slots */}
+      {ads.some((a) => a.placement === 'top_banner' && a.status === 'active' && !a.is_expired) && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
           <AdSlot ads={ads} placement="top_banner" />
         </div>
@@ -774,7 +787,7 @@ export function LandingPage({
             <AdSlot
               ads={ads}
               placement="sidebar_box"
-              onNavigateAdmin={() => onNavigate('/admin/login')}
+              onNavigateAdmin={currentAdmin ? () => onNavigate('/admin') : undefined}
             />
           </aside>
         </div>

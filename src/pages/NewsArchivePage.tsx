@@ -2,13 +2,14 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Search, ArrowRight, Newspaper, Megaphone } from 'lucide-react';
 import { apiRequest, formatDate, estimateReadTime } from '../lib/api.ts';
 import { ArticleMedia } from '../components/ArticleMedia.tsx';
-import type { Article, Category } from '../types.ts';
+import type { AdminUser, Article, Category } from '../types.ts';
 
 interface NewsArchivePageProps {
   categories: Category[];
   initialQuery?: string;
   initialCategory?: string;
   onlyAnnouncements?: boolean;
+  currentAdmin?: AdminUser | null;
   onNavigate: (path: string) => void;
 }
 
@@ -17,6 +18,7 @@ export function NewsArchivePage({
   initialQuery = '',
   initialCategory = 'all',
   onlyAnnouncements = false,
+  currentAdmin,
   onNavigate,
 }: NewsArchivePageProps) {
   const [query, setQuery] = useState(initialQuery);
@@ -186,13 +188,15 @@ export function NewsArchivePage({
                 Reset Filters
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => onNavigate('/admin/login')}
-              className="px-4 py-2 text-xs font-semibold text-white bg-[#0B2545] rounded-md hover:bg-[#13315C] cursor-pointer"
-            >
-              Admin Portal
-            </button>
+            {currentAdmin && (currentAdmin.role === 'editor' || currentAdmin.role === 'super_admin') && (
+              <button
+                type="button"
+                onClick={() => onNavigate('/admin')}
+                className="px-4 py-2 text-xs font-semibold text-white bg-[#0B2545] rounded-md hover:bg-[#13315C] cursor-pointer"
+              >
+                Admin Portal
+              </button>
+            )}
           </div>
         </div>
       ) : (

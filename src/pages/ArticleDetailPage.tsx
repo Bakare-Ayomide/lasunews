@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowLeft, Share2, Check, Megaphone, ArrowRight, MessageSquare } from 'lucide-react';
-import { apiRequest, formatDate, formatDateTime, estimateReadTime } from '../lib/api.ts';
+import { apiRequest, formatDate, formatDateTime, estimateReadTime, isRichHtml, sanitizeHtmlForRender } from '../lib/api.ts';
 import { ArticleMedia } from '../components/ArticleMedia.tsx';
 import { AdSlot } from '../components/AdSlot.tsx';
 import type { Advertisement, Article, CommentItem, PublicUser } from '../types.ts';
@@ -129,10 +129,15 @@ export function ArticleDetailPage({ slug, currentUser, onNavigate }: ArticleDeta
     );
   }
 
-  const paragraphs = (article.content || '')
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter(Boolean);
+  const rawContent = article.content || '';
+  const richHtmlMode = isRichHtml(rawContent);
+  const sanitizedRichHtml = richHtmlMode ? sanitizeHtmlForRender(rawContent) : '';
+  const paragraphs = richHtmlMode
+    ? []
+    : rawContent
+        .split(/\n\s*\n/)
+        .map((p) => p.trim())
+        .filter(Boolean);
 
   const shareUrl = typeof window !== 'undefined' ? encodeURIComponent(window.location.href) : '';
   const shareText = encodeURIComponent(article.title);
@@ -231,20 +236,27 @@ export function ArticleDetailPage({ slug, currentUser, onNavigate }: ArticleDeta
               </figure>
             )}
 
-            <div className="py-6 space-y-6 text-base sm:text-[17px] text-[#14181F] leading-[1.8]">
-              {paragraphs.map((para, idx) => (
-                <p
-                  key={idx}
-                  className={
-                    idx === 0
-                      ? 'first-letter:text-5xl first-letter:font-serif first-letter:font-bold first-letter:text-[#0B2545] first-letter:float-left first-letter:mr-3 first-letter:mt-1 first-letter:leading-none'
-                      : ''
-                  }
-                >
-                  {para}
-                </p>
-              ))}
-            </div>
+            {richHtmlMode ? (
+              <div
+                className="article-prose py-6 text-base sm:text-[17px] text-[#14181F] leading-[1.8]"
+                dangerouslySetInnerHTML={{ __html: sanitizedRichHtml }}
+              />
+            ) : (
+              <div className="py-6 space-y-6 text-base sm:text-[17px] text-[#14181F] leading-[1.8]">
+                {paragraphs.map((para, idx) => (
+                  <p
+                    key={idx}
+                    className={
+                      idx === 0
+                        ? 'first-letter:text-5xl first-letter:font-serif first-letter:font-bold first-letter:text-[#0B2545] first-letter:float-left first-letter:mr-3 first-letter:mt-1 first-letter:leading-none'
+                        : ''
+                    }
+                  >
+                    {para}
+                  </p>
+                ))}
+              </div>
+            )}
 
             {/* Comments & Moderation Section */}
             <section className="mt-10 pt-8 border-t border-stone-300 space-y-6">

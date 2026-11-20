@@ -59,7 +59,8 @@ if ($method === 'GET') {
 if ($method === 'POST') {
     $title = trim((string) ($body['title'] ?? ''));
     $excerpt = trim((string) ($body['excerpt'] ?? ''));
-    $content = trim((string) ($body['content'] ?? ''));
+    $content = sanitize_article_html((string) ($body['content'] ?? ''));
+    $plainContent = trim(html_entity_decode(strip_tags($content), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
     $featuredImage = trim((string) ($body['featured_image'] ?? ''));
     $categoryId = (int) ($body['category_id'] ?? 0);
     $status = ($body['status'] ?? 'draft') === 'published' ? 'published' : 'draft';
@@ -74,8 +75,8 @@ if ($method === 'POST') {
     if (mb_strlen($excerpt) < 10 || mb_strlen($excerpt) > 500) {
         json_response(['error' => 'Summary/excerpt must be between 10 and 500 characters.'], 400);
     }
-    if (mb_strlen($content) < 20) {
-        json_response(['error' => 'Article body content must be at least 20 characters.'], 400);
+    if (mb_strlen($plainContent) < 20) {
+        json_response(['error' => 'Article body content must be at least 20 characters of readable text.'], 400);
     }
 
     $catStmt = $pdo->prepare('SELECT id, name FROM categories WHERE id = ? LIMIT 1');
@@ -142,7 +143,8 @@ if ($method === 'PUT') {
 
     $title = trim((string) ($body['title'] ?? ''));
     $excerpt = trim((string) ($body['excerpt'] ?? ''));
-    $content = trim((string) ($body['content'] ?? ''));
+    $content = sanitize_article_html((string) ($body['content'] ?? ''));
+    $plainContent = trim(html_entity_decode(strip_tags($content), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
     $featuredImage = trim((string) ($body['featured_image'] ?? ''));
     $categoryId = (int) ($body['category_id'] ?? 0);
     $status = ($body['status'] ?? 'draft') === 'published' ? 'published' : 'draft';
@@ -157,8 +159,8 @@ if ($method === 'PUT') {
     if (mb_strlen($excerpt) < 10 || mb_strlen($excerpt) > 500) {
         json_response(['error' => 'Summary/excerpt must be between 10 and 500 characters.'], 400);
     }
-    if (mb_strlen($content) < 20) {
-        json_response(['error' => 'Article body content must be at least 20 characters.'], 400);
+    if (mb_strlen($plainContent) < 20) {
+        json_response(['error' => 'Article body content must be at least 20 characters of readable text.'], 400);
     }
 
     $catStmt = $pdo->prepare('SELECT id FROM categories WHERE id = ? LIMIT 1');

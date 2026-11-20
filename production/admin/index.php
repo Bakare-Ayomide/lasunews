@@ -166,7 +166,10 @@ $csrf = csrf_token();
               <h2 style="font-size:1.15rem;">Newsroom Performance &amp; Readership Analytics</h2>
               <p style="margin:0.2rem 0 0;font-size:0.8rem;color:var(--lasu-muted);">Live MySQL metrics across all published dispatches, drafts, desks, comments, and sponsors.</p>
             </div>
-            <button type="button" id="refreshAnalyticsBtn" class="btn btn-outline">Refresh Metrics</button>
+            <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+              <button type="button" id="exportAnalyticsAdsPdfBtn" class="btn btn-primary">Export Ad Stats PDF</button>
+              <button type="button" id="refreshAnalyticsBtn" class="btn btn-outline">Refresh Metrics</button>
+            </div>
           </div>
 
           <div id="analyticsSummaryGrid" class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));"></div>
@@ -354,6 +357,34 @@ $csrf = csrf_token();
                     </select>
                   </div>
                 </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;">
+                  <div class="form-group">
+                    <label for="adDurationValue" class="form-label">Duration</label>
+                    <input id="adDurationValue" type="number" min="0" max="100000" step="1" class="input" placeholder="e.g., 30">
+                  </div>
+                  <div class="form-group">
+                    <label for="adDurationUnit" class="form-label">Time Unit</label>
+                    <select id="adDurationUnit" class="select">
+                      <option value="none">No Expiry (Unlimited)</option>
+                      <option value="seconds">Seconds</option>
+                      <option value="minutes">Minutes</option>
+                      <option value="hours">Hours</option>
+                      <option value="days">Days</option>
+                      <option value="months">Months</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="adDisplayOrder" class="form-label">Slot Order</label>
+                    <input id="adDisplayOrder" type="number" min="0" step="1" value="0" class="input" placeholder="0">
+                  </div>
+                </div>
+                <div id="adRestartWrap" class="form-group" style="padding:0.6rem 0.75rem;background:var(--lasu-paper);border:1px solid var(--lasu-border);border-radius:0.375rem;" hidden>
+                  <label style="font-size:0.78rem;display:flex;align-items:center;gap:0.45rem;cursor:pointer;">
+                    <input type="checkbox" id="adRestartDuration">
+                    <span>Restart duration countdown from now</span>
+                  </label>
+                  <div id="adExpiryHint" class="font-mono" style="font-size:0.72rem;color:var(--lasu-muted);margin-top:0.25rem;"></div>
+                </div>
                 <div class="form-group">
                   <label for="adTargetUrl" class="form-label">Destination URL (optional)</label>
                   <input id="adTargetUrl" type="url" class="input" placeholder="https://lasu.edu.ng">
@@ -374,10 +405,32 @@ $csrf = csrf_token();
             </div>
 
             <div class="panel">
+              <div class="panel-head" style="flex-wrap:wrap;gap:0.65rem;">
+                <h2 style="font-size:1.05rem;">Campaign Performance &amp; Spaces</h2>
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:0.45rem;">
+                  <select id="adsExportPlacement" class="select" style="width:auto;padding:0.4rem 0.65rem;font-size:0.76rem;" aria-label="PDF export placement scope">
+                    <option value="all">All Placements</option>
+                    <option value="top_banner">Top Leaderboard</option>
+                    <option value="sidebar_box">Sidebar Box</option>
+                    <option value="inline_banner">Inline Banner</option>
+                  </select>
+                  <select id="adsExportStatus" class="select" style="width:auto;padding:0.4rem 0.65rem;font-size:0.76rem;" aria-label="PDF export status filter">
+                    <option value="all">All Statuses</option>
+                    <option value="active">Active Only</option>
+                    <option value="paused">Paused Only</option>
+                    <option value="expired">Expired Only</option>
+                  </select>
+                  <button type="button" id="exportAdsPdfBtn" class="btn btn-primary" style="padding:0.45rem 0.85rem;">Export PDF Report</button>
+                </div>
+              </div>
+              <div id="adsPlacementSummary" class="ads-summary-bar">
+                <span>Multiple active ad spaces per placement are supported.</span>
+                <span class="font-mono tabular-nums">Top Banner: 0 &middot; Sidebar: 0 &middot; Inline: 0</span>
+              </div>
               <div class="data-table-wrap">
                 <table class="data-table">
                   <thead>
-                    <tr><th>Campaign</th><th>Placement</th><th>Status</th><th style="text-align:right;">Impr.</th><th style="text-align:right;">Clicks</th><th style="text-align:right;">Actions</th></tr>
+                    <tr><th>Campaign</th><th>Placement / Slot</th><th>Status &amp; Duration</th><th style="text-align:right;">Impr.</th><th style="text-align:right;">Clicks</th><th style="text-align:right;">Actions</th></tr>
                   </thead>
                   <tbody id="adsTableBody"></tbody>
                 </table>
@@ -580,8 +633,78 @@ $csrf = csrf_token();
         </div>
 
         <div class="form-group">
-          <label for="artContent" class="form-label">Full Broadcast Content</label>
-          <textarea id="artContent" rows="7" required minlength="20" class="textarea" placeholder="Write the complete dispatch..."></textarea>
+          <label for="artRteEditor" class="form-label">Full Broadcast Content (Rich Text Editor)</label>
+          <div id="artRteShell" class="rte-shell">
+            <div class="rte-toolbar" role="toolbar" aria-label="Text Formatting">
+              <select id="rteBlockFormat" class="rte-select" aria-label="Text style">
+                <option value="P">Paragraph</option>
+                <option value="H2">Heading 2</option>
+                <option value="H3">Heading 3</option>
+                <option value="BLOCKQUOTE">Quote</option>
+              </select>
+
+              <span class="rte-divider"></span>
+
+              <button type="button" class="rte-btn" data-rte-cmd="bold" title="Bold (Ctrl+B)"><strong>B</strong></button>
+              <button type="button" class="rte-btn" data-rte-cmd="italic" title="Italic (Ctrl+I)"><em>I</em></button>
+              <button type="button" class="rte-btn" data-rte-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+              <button type="button" class="rte-btn" data-rte-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+
+              <span class="rte-divider"></span>
+
+              <button type="button" class="rte-btn" data-rte-cmd="insertUnorderedList" title="Bulleted List">&bull; List</button>
+              <button type="button" class="rte-btn" data-rte-cmd="insertOrderedList" title="Numbered List">1. List</button>
+
+              <span class="rte-divider"></span>
+
+              <button type="button" class="rte-btn" data-rte-cmd="justifyLeft" title="Align Left">Left</button>
+              <button type="button" class="rte-btn" data-rte-cmd="justifyCenter" title="Align Center">Center</button>
+              <button type="button" class="rte-btn" data-rte-cmd="justifyRight" title="Align Right">Right</button>
+
+              <span class="rte-divider"></span>
+
+              <button type="button" id="rteLinkToggleBtn" class="rte-btn" title="Insert / Edit Link">Link</button>
+              <button type="button" id="rteImageToggleBtn" class="rte-btn" title="Insert Inline Image">Image</button>
+              <button type="button" class="rte-btn" data-rte-cmd="insertHorizontalRule" title="Insert Divider">&mdash;</button>
+              <button type="button" class="rte-btn" data-rte-cmd="removeFormat" title="Clear Formatting">Clear</button>
+
+              <span class="rte-divider"></span>
+
+              <button type="button" class="rte-btn" data-rte-cmd="undo" title="Undo">&#8630;</button>
+              <button type="button" class="rte-btn" data-rte-cmd="redo" title="Redo">&#8631;</button>
+
+              <button type="button" id="rteModeBtn" class="rte-btn" style="margin-left:auto;">&lt;/&gt; HTML</button>
+            </div>
+
+            <div id="rteLinkBar" class="rte-inline-bar" hidden>
+              <input id="rteLinkInput" type="url" class="input" style="flex:1;min-width:200px;padding:0.35rem 0.6rem;background:#fff;" placeholder="https://lasu.edu.ng/...">
+              <button type="button" id="rteLinkApplyBtn" class="btn btn-primary" style="padding:0.35rem 0.7rem;">Apply Link</button>
+              <button type="button" id="rteLinkRemoveBtn" class="btn btn-outline" style="padding:0.35rem 0.7rem;">Unlink</button>
+              <button type="button" id="rteLinkCancelBtn" class="btn btn-outline" style="padding:0.35rem 0.7rem;">Close</button>
+            </div>
+
+            <div id="rteImageBar" class="rte-inline-bar" hidden>
+              <input id="rteInlineImgFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" style="font-size:0.75rem;">
+              <span style="color:var(--lasu-muted);">or URL:</span>
+              <input id="rteInlineImgUrl" type="url" class="input" style="flex:1;min-width:180px;padding:0.35rem 0.6rem;background:#fff;" placeholder="https://.../photo.jpg">
+              <button type="button" id="rteInlineImgInsertBtn" class="btn btn-primary" style="padding:0.35rem 0.7rem;">Insert</button>
+              <button type="button" id="rteInlineImgCancelBtn" class="btn btn-outline" style="padding:0.35rem 0.7rem;">Close</button>
+            </div>
+
+            <div id="artRteEditor"
+                 class="rte-editor"
+                 contenteditable="true"
+                 role="textbox"
+                 aria-multiline="true"
+                 data-placeholder="Write and format the complete news dispatch..."></div>
+
+            <textarea id="artContent" class="rte-source" hidden placeholder="HTML source..."></textarea>
+
+            <div class="rte-footer">
+              <span>Rich Text Formatting Active &middot; Headings, Lists, Quotes, Links &amp; Inline Media</span>
+              <span id="rteStatsLabel" class="font-mono tabular-nums">0 words &middot; 1 min read</span>
+            </div>
+          </div>
         </div>
 
         <div style="display:flex;flex-wrap:wrap;gap:1.25rem;align-items:center;margin-bottom:1.25rem;">

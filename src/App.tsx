@@ -164,7 +164,9 @@ export default function App() {
         ) : pathOnly === '/account' ? (
           <UserAccountPage
             user={currentUser}
+            currentAdmin={currentAdmin}
             onUserChange={setCurrentUser}
+            onAdminChange={setCurrentAdmin}
             onNavigate={navigate}
           />
         ) : pathOnly.startsWith('/article/') ? (
@@ -179,6 +181,7 @@ export default function App() {
             initialQuery={searchParams.get('q') || ''}
             initialCategory={searchParams.get('category') || 'all'}
             onlyAnnouncements={false}
+            currentAdmin={currentAdmin}
             onNavigate={navigate}
           />
         ) : pathOnly === '/announcements' ? (
@@ -187,6 +190,7 @@ export default function App() {
             initialQuery={searchParams.get('q') || ''}
             initialCategory={searchParams.get('category') || 'all'}
             onlyAnnouncements={true}
+            currentAdmin={currentAdmin}
             onNavigate={navigate}
           />
         ) : (
@@ -195,13 +199,14 @@ export default function App() {
             loading={homeLoading}
             error={homeError}
             currentUser={currentUser}
+            currentAdmin={currentAdmin}
             onNavigate={navigate}
             onRetry={loadHomeData}
           />
         )}
       </main>
 
-      <SiteFooter categories={homeData?.categories || []} onNavigate={navigate} />
+      <SiteFooter categories={homeData?.categories || []} currentAdmin={currentAdmin} onNavigate={navigate} />
     </div>
   );
 }

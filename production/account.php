@@ -82,7 +82,10 @@ require __DIR__ . '/includes/header.php';
               <?= e($user['email']) ?><?= !empty($user['department']) ? ' · ' . e($user['department']) : '' ?>
             </p>
           </div>
-          <div style="display:flex;gap:0.75rem;">
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+            <?php if ($loggedAdmin): ?>
+              <a href="<?= e(url_for('/admin/index.php')) ?>" class="btn btn-primary btn-sm">Admin Portal</a>
+            <?php endif; ?>
             <a href="<?= e(url_for('/news.php')) ?>" class="btn btn-outline btn-sm">Browse News</a>
             <a href="<?= e(url_for('/account.php?action=logout')) ?>" class="btn btn-primary btn-sm">Sign Out</a>
           </div>

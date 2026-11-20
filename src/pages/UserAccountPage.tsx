@@ -1,15 +1,17 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { User, LogOut, ArrowLeft, MessageSquare } from 'lucide-react';
-import { apiRequest, formatDateTime, setUserToken } from '../lib/api.ts';
-import type { CommentItem, PublicUser } from '../types.ts';
+import { apiRequest, clearAdminSession, formatDateTime, setAdminSession, setUserToken } from '../lib/api.ts';
+import type { AdminUser, CommentItem, PublicUser } from '../types.ts';
 
 interface UserAccountPageProps {
   user: PublicUser | null;
+  currentAdmin?: AdminUser | null;
   onUserChange: (user: PublicUser | null) => void;
+  onAdminChange?: (admin: AdminUser | null) => void;
   onNavigate: (path: string) => void;
 }
 
-export function UserAccountPage({ user, onUserChange, onNavigate }: UserAccountPageProps) {
+export function UserAccountPage({ user, currentAdmin, onUserChange, onAdminChange, onNavigate }: UserAccountPageProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -42,12 +44,20 @@ export function UserAccountPage({ user, onUserChange, onNavigate }: UserAccountP
         if (res.userToken) setUserToken(res.userToken);
         onUserChange(res.user);
       } else {
-        const res = await apiRequest<{ userToken?: string; user: PublicUser }>('/api/users/login', {
+        const res = await apiRequest<{
+          userToken?: string;
+          user: PublicUser;
+          adminAuth?: { admin: AdminUser; sessionToken: string; csrfToken: string };
+        }>('/api/users/login', {
           method: 'POST',
           body: JSON.stringify({ email, password }),
         });
         if (res.userToken) setUserToken(res.userToken);
         onUserChange(res.user);
+        if (res.adminAuth) {
+          setAdminSession(res.adminAuth.sessionToken, res.adminAuth.csrfToken);
+          onAdminChange?.(res.adminAuth.admin);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed.');
@@ -59,6 +69,10 @@ export function UserAccountPage({ user, onUserChange, onNavigate }: UserAccountP
   const handleLogout = async () => {
     await apiRequest('/api/users/logout', { method: 'POST' }).catch(() => {});
     setUserToken(null);
+    if (user && currentAdmin && user.email.toLowerCase() === currentAdmin.email.toLowerCase()) {
+      clearAdminSession();
+      onAdminChange?.(null);
+    }
     onUserChange(null);
   };
 
@@ -77,7 +91,16 @@ export function UserAccountPage({ user, onUserChange, onNavigate }: UserAccountP
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            {currentAdmin && (currentAdmin.role === 'editor' || currentAdmin.role === 'super_admin') && (
+              <button
+                type="button"
+                onClick={() => onNavigate('/admin')}
+                className="px-4 py-2 text-xs font-semibold text-white bg-[#0B2545] hover:bg-[#13315C] cursor-pointer"
+              >
+                Admin Portal
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onNavigate('/news')}

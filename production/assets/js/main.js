@@ -252,4 +252,39 @@
       }
     });
   }
+
+  // Live Advert Expiration Watcher (seconds/minutes/hours/days/months accuracy)
+  const timedAdNodes = Array.prototype.slice.call(document.querySelectorAll('[data-ad-expires-ms]'));
+  if (timedAdNodes.length > 0) {
+    const pruneExpiredAds = function () {
+      const nowMs = Date.now();
+      let removedAny = false;
+      timedAdNodes.forEach(function (el) {
+        if (!el.isConnected) return;
+        const rawExp = el.getAttribute('data-ad-expires-ms');
+        const expMs = rawExp ? Number(rawExp) : 0;
+        if (expMs > 0 && nowMs >= expMs) {
+          const group = el.closest('[data-ad-group]');
+          el.remove();
+          removedAny = true;
+          if (group) {
+            const remaining = group.querySelectorAll('[data-ad-slot]').length;
+            if (remaining === 0) {
+              const fallbackId = group.getAttribute('data-ad-fallback-target');
+              if (fallbackId) {
+                const fb = document.getElementById(fallbackId);
+                if (fb) fb.hidden = false;
+              }
+              group.remove();
+            }
+          }
+        }
+      });
+      if (removedAny && document.querySelectorAll('[data-ad-expires-ms]').length === 0) {
+        clearInterval(expiryTimer);
+      }
+    };
+    const expiryTimer = setInterval(pruneExpiredAds, 1000);
+    pruneExpiredAds();
+  }
 })();

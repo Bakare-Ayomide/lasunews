@@ -55,6 +55,13 @@ export interface Advertisement {
   target_url: string;
   placement: 'top_banner' | 'sidebar_box' | 'inline_banner';
   status: 'active' | 'paused';
+  duration_value?: number | null;
+  duration_unit?: 'none' | 'seconds' | 'minutes' | 'hours' | 'days' | 'months';
+  expires_at?: string | null;
+  expires_at_ms?: number | null;
+  display_order?: number;
+  is_expired?: number;
+  remaining_seconds?: number | null;
   impressions: number;
   clicks: number;
   created_at: string;

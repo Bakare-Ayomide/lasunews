@@ -40,21 +40,37 @@ function start_secure_session(): void
 function current_admin(): ?array
 {
     start_secure_session();
-    if (empty($_SESSION['admin_id'])) {
-        return null;
-    }
-
     $pdo = lasu_db();
-    $stmt = $pdo->prepare('SELECT id, full_name, email, role, is_active FROM admins WHERE id = ? LIMIT 1');
-    $stmt->execute([(int) $_SESSION['admin_id']]);
-    $admin = $stmt->fetch();
 
-    if (!$admin || (int) $admin['is_active'] !== 1) {
+    if (!empty($_SESSION['admin_id'])) {
+        $stmt = $pdo->prepare('SELECT id, full_name, email, role, is_active FROM admins WHERE id = ? LIMIT 1');
+        $stmt->execute([(int) $_SESSION['admin_id']]);
+        $admin = $stmt->fetch();
+
+        if ($admin && (int) $admin['is_active'] === 1 && in_array($admin['role'], ['editor', 'super_admin'], true)) {
+            return $admin;
+        }
         unset($_SESSION['admin_id']);
-        return null;
     }
 
-    return $admin;
+    // If signed in as a reader user whose email is an active admin or super_admin, bind the admin session
+    if (!empty($_SESSION['reader_user_id'])) {
+        $uStmt = $pdo->prepare('SELECT email, is_active FROM users WHERE id = ? LIMIT 1');
+        $uStmt->execute([(int) $_SESSION['reader_user_id']]);
+        $uRow = $uStmt->fetch();
+        if ($uRow && (int) $uRow['is_active'] === 1 && !empty($uRow['email'])) {
+            $aStmt = $pdo->prepare('SELECT id, full_name, email, role, is_active FROM admins WHERE email = ? LIMIT 1');
+            $aStmt->execute([strtolower(trim((string) $uRow['email']))]);
+            $linkedAdmin = $aStmt->fetch();
+            if ($linkedAdmin && (int) $linkedAdmin['is_active'] === 1 && in_array($linkedAdmin['role'], ['editor', 'super_admin'], true)) {
+                $_SESSION['admin_id'] = (int) $linkedAdmin['id'];
+                csrf_token();
+                return $linkedAdmin;
+            }
+        }
+    }
+
+    return null;
 }
 
 function current_user(): ?array
@@ -196,6 +212,12 @@ function register_public_user(string $fullName, string $email, string $password,
         return ['ok' => false, 'error' => 'An account with this email already exists.'];
     }
 
+    $dupAdmin = $pdo->prepare('SELECT id FROM admins WHERE email = ? LIMIT 1');
+    $dupAdmin->execute([$email]);
+    if ($dupAdmin->fetch()) {
+        return ['ok' => false, 'error' => 'An account with this email already exists. Please sign in.'];
+    }
+
     $hash = password_hash($password, PASSWORD_DEFAULT);
     $stmt = $pdo->prepare(
         'INSERT INTO users (full_name, email, password_hash, department, is_active, last_login) VALUES (?, ?, ?, ?, 1, NOW())'
@@ -242,6 +264,17 @@ function attempt_user_login(string $email, string $password): array
 
     $pdo->prepare('UPDATE users SET last_login = NOW() WHERE id = ?')->execute([(int) $user['id']]);
 
+    // If this user is also an active administrator with matching credentials, grant admin session automatically
+    $adminStmt = $pdo->prepare('SELECT id, full_name, email, password_hash, role, is_active FROM admins WHERE email = ? LIMIT 1');
+    $adminStmt->execute([strtolower((string) $user['email'])]);
+    $matchedAdmin = $adminStmt->fetch();
+    if ($matchedAdmin && (int) $matchedAdmin['is_active'] === 1 && password_verify($password, (string) $matchedAdmin['password_hash'])) {
+        $_SESSION['admin_id'] = (int) $matchedAdmin['id'];
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        $pdo->prepare('UPDATE admins SET last_login = NOW() WHERE id = ?')->execute([(int) $matchedAdmin['id']]);
+        log_activity($pdo, (int) $matchedAdmin['id'], 'login', 'admin', (int) $matchedAdmin['id'], 'Signed in via Reader Account');
+    }
+
     return [
         'ok' => true,
         'user' => [
@@ -257,5 +290,23 @@ function attempt_user_login(string $email, string $password): array
 function logout_user(): void
 {
     start_secure_session();
+    if (!empty($_SESSION['reader_user_id']) && !empty($_SESSION['admin_id'])) {
+        try {
+            $pdo = lasu_db();
+            $uStmt = $pdo->prepare('SELECT email FROM users WHERE id = ? LIMIT 1');
+            $uStmt->execute([(int) $_SESSION['reader_user_id']]);
+            $uEmail = strtolower((string) ($uStmt->fetch()['email'] ?? ''));
+
+            $aStmt = $pdo->prepare('SELECT email FROM admins WHERE id = ? LIMIT 1');
+            $aStmt->execute([(int) $_SESSION['admin_id']]);
+            $aEmail = strtolower((string) ($aStmt->fetch()['email'] ?? ''));
+
+            if ($uEmail !== '' && $uEmail === $aEmail) {
+                unset($_SESSION['admin_id']);
+            }
+        } catch (Throwable) {
+            // Ignore lookup error
+        }
+    }
     unset($_SESSION['reader_user_id']);
 }

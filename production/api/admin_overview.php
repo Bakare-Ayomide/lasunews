@@ -29,7 +29,9 @@ $catCount = (int) ($pdo->query('SELECT COUNT(*) AS cnt FROM categories')->fetch(
 $adminCount = (int) ($pdo->query('SELECT COUNT(*) AS cnt FROM admins WHERE is_active = 1')->fetch()['cnt'] ?? 0);
 $userCount = (int) ($pdo->query('SELECT COUNT(*) AS cnt FROM users')->fetch()['cnt'] ?? 0);
 $pendingComments = (int) ($pdo->query("SELECT COUNT(*) AS cnt FROM comments WHERE status = 'pending'")->fetch()['cnt'] ?? 0);
-$activeAds = (int) ($pdo->query("SELECT COUNT(*) AS cnt FROM advertisements WHERE status = 'active'")->fetch()['cnt'] ?? 0);
+$activeAdsStmt = $pdo->prepare("SELECT COUNT(*) AS cnt FROM advertisements WHERE status = 'active' AND (expires_at IS NULL OR expires_at > ?)");
+$activeAdsStmt->execute([date('Y-m-d H:i:s')]);
+$activeAds = (int) ($activeAdsStmt->fetch()['cnt'] ?? 0);
 $unreadCount = (int) ($pdo->query('SELECT COUNT(*) AS cnt FROM contact_messages WHERE is_read = 0')->fetch()['cnt'] ?? 0);
 
 $recentArticles = $pdo->query(

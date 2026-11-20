@@ -401,6 +401,221 @@
   const modal = document.getElementById('articleModal');
   const articleForm = document.getElementById('articleForm');
 
+  // Rich Text Editor Helpers
+  const rteEditor = document.getElementById('artRteEditor');
+  const rteSource = document.getElementById('artContent');
+  const rteBlockFormat = document.getElementById('rteBlockFormat');
+  const rteStatsLabel = document.getElementById('rteStatsLabel');
+  const rteModeBtn = document.getElementById('rteModeBtn');
+  const rteLinkBar = document.getElementById('rteLinkBar');
+  const rteLinkInput = document.getElementById('rteLinkInput');
+  const rteImageBar = document.getElementById('rteImageBar');
+  const rteInlineImgUrl = document.getElementById('rteInlineImgUrl');
+  const rteInlineImgFile = document.getElementById('rteInlineImgFile');
+  let rteSourceMode = false;
+  let savedSelectionRange = null;
+
+  function isHtmlString(str) {
+    return /<(p|br|h[1-6]|ul|ol|li|blockquote|strong|b|em|i|u|s|a|img|figure|hr|div)\b/i.test(str || '');
+  }
+
+  function plainTextToRichHtml(text) {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return '';
+    if (isHtmlString(trimmed)) return trimmed;
+    return trimmed
+      .split(/\n\s*\n/)
+      .map((para) => '<p>' + escapeHtml(para.trim()).replace(/\n/g, '<br>') + '</p>')
+      .join('');
+  }
+
+  function updateRteStats() {
+    if (!rteEditor || !rteSource || !rteStatsLabel) return;
+    const html = rteSourceMode ? rteSource.value : rteEditor.innerHTML;
+    if (!rteSourceMode) rteSource.value = html;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    const plain = (tmp.textContent || tmp.innerText || '').trim();
+    const words = plain ? plain.split(/\s+/).filter(Boolean).length : 0;
+    const mins = Math.max(1, Math.ceil(words / 200));
+    rteStatsLabel.textContent = words + ' words · ' + mins + ' min read';
+  }
+
+  function setRteContent(rawContent) {
+    const html = plainTextToRichHtml(rawContent);
+    if (rteEditor) rteEditor.innerHTML = html;
+    if (rteSource) rteSource.value = html;
+    if (rteSourceMode && rteModeBtn) {
+      rteSourceMode = false;
+      rteEditor.hidden = false;
+      rteSource.hidden = true;
+      rteModeBtn.classList.remove('is-active');
+    }
+    if (rteLinkBar) rteLinkBar.hidden = true;
+    if (rteImageBar) rteImageBar.hidden = true;
+    updateRteStats();
+  }
+
+  function getRteContent() {
+    if (rteSourceMode && rteSource) {
+      return rteSource.value.trim();
+    }
+    return rteEditor ? rteEditor.innerHTML.trim() : (rteSource ? rteSource.value.trim() : '');
+  }
+
+  function saveSelection() {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && rteEditor && rteEditor.contains(sel.anchorNode)) {
+      savedSelectionRange = sel.getRangeAt(0).cloneRange();
+    }
+  }
+
+  function restoreSelection() {
+    if (!rteEditor) return;
+    rteEditor.focus();
+    if (savedSelectionRange) {
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(savedSelectionRange);
+      }
+    }
+  }
+
+  if (rteEditor) {
+    try {
+      document.execCommand('defaultParagraphSeparator', false, 'p');
+    } catch {
+      // Ignore unsupported browsers
+    }
+
+    rteEditor.addEventListener('input', updateRteStats);
+    rteEditor.addEventListener('keyup', saveSelection);
+    rteEditor.addEventListener('mouseup', saveSelection);
+
+    document.querySelectorAll('[data-rte-cmd]').forEach((btn) => {
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
+      btn.addEventListener('click', () => {
+        if (rteSourceMode) return;
+        rteEditor.focus();
+        document.execCommand(btn.getAttribute('data-rte-cmd'), false, null);
+        updateRteStats();
+      });
+    });
+
+    if (rteBlockFormat) {
+      rteBlockFormat.addEventListener('change', () => {
+        if (rteSourceMode) return;
+        rteEditor.focus();
+        document.execCommand('formatBlock', false, '<' + rteBlockFormat.value + '>');
+        updateRteStats();
+      });
+    }
+
+    if (rteModeBtn && rteSource) {
+      rteModeBtn.addEventListener('click', () => {
+        rteSourceMode = !rteSourceMode;
+        if (rteSourceMode) {
+          rteSource.value = rteEditor.innerHTML;
+          rteEditor.hidden = true;
+          rteSource.hidden = false;
+          rteModeBtn.classList.add('is-active');
+        } else {
+          rteEditor.innerHTML = rteSource.value;
+          rteSource.hidden = true;
+          rteEditor.hidden = false;
+          rteModeBtn.classList.remove('is-active');
+        }
+        updateRteStats();
+      });
+      rteSource.addEventListener('input', updateRteStats);
+    }
+
+    document.getElementById('rteLinkToggleBtn')?.addEventListener('click', () => {
+      if (rteSourceMode || !rteLinkBar) return;
+      saveSelection();
+      if (rteImageBar) rteImageBar.hidden = true;
+      rteLinkBar.hidden = !rteLinkBar.hidden;
+      if (!rteLinkBar.hidden && rteLinkInput) {
+        rteLinkInput.value = 'https://';
+        rteLinkInput.focus();
+      }
+    });
+
+    document.getElementById('rteLinkApplyBtn')?.addEventListener('click', () => {
+      const href = (rteLinkInput?.value || '').trim();
+      if (!href || !/^(https?:\/\/|mailto:|\/)/i.test(href)) {
+        notify('error', 'Enter a valid link starting with https://, http://, or /.');
+        return;
+      }
+      restoreSelection();
+      const sel = window.getSelection();
+      if (sel && sel.isCollapsed) {
+        document.execCommand('insertHTML', false, '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(href) + '</a>');
+      } else {
+        document.execCommand('createLink', false, href);
+      }
+      if (rteLinkBar) rteLinkBar.hidden = true;
+      updateRteStats();
+    });
+
+    document.getElementById('rteLinkRemoveBtn')?.addEventListener('click', () => {
+      restoreSelection();
+      document.execCommand('unlink', false, null);
+      if (rteLinkBar) rteLinkBar.hidden = true;
+      updateRteStats();
+    });
+
+    document.getElementById('rteLinkCancelBtn')?.addEventListener('click', () => {
+      if (rteLinkBar) rteLinkBar.hidden = true;
+    });
+
+    document.getElementById('rteImageToggleBtn')?.addEventListener('click', () => {
+      if (rteSourceMode || !rteImageBar) return;
+      saveSelection();
+      if (rteLinkBar) rteLinkBar.hidden = true;
+      rteImageBar.hidden = !rteImageBar.hidden;
+    });
+
+    document.getElementById('rteInlineImgCancelBtn')?.addEventListener('click', () => {
+      if (rteImageBar) rteImageBar.hidden = true;
+    });
+
+    document.getElementById('rteInlineImgInsertBtn')?.addEventListener('click', () => {
+      const url = (rteInlineImgUrl?.value || '').trim();
+      if (!url || !/^(https?:\/\/|\/)/i.test(url)) {
+        notify('error', 'Enter a valid image URL starting with https://, http://, or /.');
+        return;
+      }
+      restoreSelection();
+      document.execCommand('insertHTML', false, '<figure><img src="' + escapeHtml(url) + '" alt="LASU Broadcast Media"></figure><p><br></p>');
+      if (rteInlineImgUrl) rteInlineImgUrl.value = '';
+      if (rteImageBar) rteImageBar.hidden = true;
+      updateRteStats();
+    });
+
+    if (rteInlineImgFile) {
+      rteInlineImgFile.addEventListener('change', async () => {
+        const file = rteInlineImgFile.files && rteInlineImgFile.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('image', file);
+        try {
+          const res = await api('/api/admin_upload.php', { method: 'POST', body: fd });
+          restoreSelection();
+          document.execCommand('insertHTML', false, '<figure><img src="' + escapeHtml(res.url) + '" alt="LASU Broadcast Media"></figure><p><br></p>');
+          if (rteImageBar) rteImageBar.hidden = true;
+          updateRteStats();
+          notify('success', 'Inline image inserted into article.');
+        } catch (err) {
+          notify('error', err.message);
+        } finally {
+          rteInlineImgFile.value = '';
+        }
+      });
+    }
+  }
+
   async function openEditor(article = null, asAnnouncement = false, prefill = null) {
     if (!modal || !articleForm) return;
     if (!categoriesCache.length) {
@@ -411,7 +626,7 @@
     document.getElementById('artModalTitle').textContent = article ? 'Edit Campus Broadcast' : 'Compose Campus Broadcast';
     document.getElementById('artTitle').value = article ? article.title : (prefill?.title || '');
     document.getElementById('artExcerpt').value = article ? article.excerpt : (prefill?.excerpt || '');
-    document.getElementById('artContent').value = article ? article.content : (prefill?.content || '');
+    setRteContent(article ? article.content : (prefill?.content || ''));
     document.getElementById('artStatus').value = article ? article.status : 'published';
     document.getElementById('artFeatured').checked = article ? Boolean(Number(article.is_featured)) : false;
     document.getElementById('artBreaking').checked = article ? Boolean(Number(article.is_breaking)) : false;
@@ -481,6 +696,16 @@
     articleForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const id = document.getElementById('artId').value;
+      const richContent = getRteContent();
+      const tmp = document.createElement('div');
+      tmp.innerHTML = richContent;
+      const plainLen = (tmp.textContent || tmp.innerText || '').trim().length;
+      if (plainLen < 20) {
+        notify('error', 'Article body content must be at least 20 characters of readable text.');
+        if (!rteSourceMode && rteEditor) rteEditor.focus();
+        return;
+      }
+
       const payload = {
         id: id ? Number(id) : undefined,
         title: document.getElementById('artTitle').value.trim(),
@@ -488,7 +713,7 @@
         status: document.getElementById('artStatus').value,
         featured_image: document.getElementById('artImageUrl').value.trim(),
         excerpt: document.getElementById('artExcerpt').value.trim(),
-        content: document.getElementById('artContent').value.trim(),
+        content: richContent,
         is_featured: document.getElementById('artFeatured').checked,
         is_breaking: document.getElementById('artBreaking').checked,
         is_announcement: document.getElementById('artAnnouncement').checked,
@@ -614,23 +839,70 @@
     });
   }
 
-  async function loadAds() {
-    try {
-      const data = await api('/api/admin_ads.php');
-      adsCache = data.ads || [];
-      const tbody = document.getElementById('adsTableBody');
-      if (!tbody) return;
+  function formatRemainingDuration(msRemaining) {
+    const totalSec = Math.max(0, Math.floor(msRemaining / 1000));
+    if (totalSec <= 0) return '0s left';
+    if (totalSec < 60) return totalSec + 's left';
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    if (mins < 60) return mins + 'm ' + secs + 's left';
+    const hrs = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (hrs < 24) return hrs + 'h ' + remMins + 'm left';
+    const days = Math.floor(hrs / 24);
+    const remHrs = hrs % 24;
+    return days + 'd ' + remHrs + 'h left';
+  }
 
-      if (!adsCache.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="padding:2rem;text-align:center;color:var(--lasu-muted);">No advertisements configured yet.</td></tr>';
-        return;
-      }
+  let adsTickTimer = null;
 
-      tbody.innerHTML = adsCache.map((ad) => (
+  function renderAdsTable() {
+    const tbody = document.getElementById('adsTableBody');
+    const summaryEl = document.getElementById('adsPlacementSummary');
+    const nowMs = Date.now();
+
+    if (summaryEl) {
+      let topCount = 0;
+      let sideCount = 0;
+      let inlineCount = 0;
+      adsCache.forEach((ad) => {
+        const expMs = ad.expires_at_ms ? Number(ad.expires_at_ms) : null;
+        const expired = expMs !== null && expMs <= nowMs;
+        if (ad.status === 'active' && !expired) {
+          if (ad.placement === 'top_banner') topCount++;
+          if (ad.placement === 'sidebar_box') sideCount++;
+          if (ad.placement === 'inline_banner') inlineCount++;
+        }
+      });
+      summaryEl.innerHTML =
+        '<span>Multiple active ad spaces per placement render simultaneously.</span>' +
+        '<span class="font-mono tabular-nums">Active Spaces &mdash; Top Banner: <strong>' + topCount +
+        '</strong> &middot; Sidebar: <strong>' + sideCount +
+        '</strong> &middot; Inline: <strong>' + inlineCount + '</strong></span>';
+    }
+
+    if (!tbody) return;
+
+    if (!adsCache.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="padding:2rem;text-align:center;color:var(--lasu-muted);">No advertisements configured yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = adsCache.map((ad) => {
+      const expMs = ad.expires_at_ms ? Number(ad.expires_at_ms) : null;
+      const expired = expMs !== null && expMs <= nowMs;
+      const statusCls = expired ? 'status-expired' : (ad.status === 'active' ? 'status-published' : 'status-draft');
+      const statusText = expired ? 'Expired' : ad.status;
+      const hasLimit = ad.duration_unit && ad.duration_unit !== 'none' && Number(ad.duration_value || 0) > 0;
+      const durMeta = hasLimit
+        ? (ad.duration_value + ' ' + ad.duration_unit + (expired ? ' · Ended' : (expMs ? ' · ' + formatRemainingDuration(expMs - nowMs) : '')))
+        : 'Unlimited';
+
+      return (
         '<tr>' +
         '<td><strong>' + escapeHtml(ad.title) + '</strong><div style="font-size:0.75rem;color:var(--lasu-muted);">' + escapeHtml(ad.advertiser_name) + '</div></td>' +
-        '<td class="font-mono">' + escapeHtml(ad.placement) + '</td>' +
-        '<td><span class="' + (ad.status === 'active' ? 'status-published' : 'status-draft') + '">' + escapeHtml(ad.status) + '</span></td>' +
+        '<td class="font-mono">' + escapeHtml(ad.placement) + '<div style="font-size:0.72rem;color:var(--lasu-muted);">Slot #' + Number(ad.display_order || 0) + '</div></td>' +
+        '<td><span class="' + statusCls + '">' + escapeHtml(statusText) + '</span><div class="font-mono" style="font-size:0.72rem;color:var(--lasu-muted);">' + escapeHtml(durMeta) + '</div></td>' +
         '<td class="font-mono tabular-nums" style="text-align:right;">' + Number(ad.impressions || 0) + '</td>' +
         '<td class="font-mono tabular-nums" style="text-align:right;">' + Number(ad.clicks || 0) + '</td>' +
         '<td style="text-align:right;white-space:nowrap;">' +
@@ -638,37 +910,91 @@
         '  <button type="button" class="btn btn-danger" data-del-ad="' + ad.id + '">Delete</button>' +
         '</td>' +
         '</tr>'
-      )).join('');
+      );
+    }).join('');
 
-      tbody.querySelectorAll('[data-edit-ad]').forEach((b) => {
-        b.addEventListener('click', () => {
-          const ad = adsCache.find((x) => String(x.id) === b.getAttribute('data-edit-ad'));
-          if (!ad) return;
-          document.getElementById('adEditId').value = ad.id;
-          document.getElementById('adTitle').value = ad.title;
-          document.getElementById('adAdvertiser').value = ad.advertiser_name;
-          document.getElementById('adPlacement').value = ad.placement;
-          document.getElementById('adStatus').value = ad.status;
-          document.getElementById('adTargetUrl').value = ad.target_url || '';
-          document.getElementById('adImageUrl').value = ad.image_url || '';
-          updateAdImagePreview(ad.image_url || '');
-          document.getElementById('adSubmitBtn').textContent = 'Update Campaign';
-          document.getElementById('adCancelBtn').hidden = false;
-        });
-      });
-
-      tbody.querySelectorAll('[data-del-ad]').forEach((b) => {
-        b.addEventListener('click', async () => {
-          try {
-            await api('/api/admin_ads.php?id=' + b.getAttribute('data-del-ad'), { method: 'DELETE' });
-            notify('success', 'Advertisement deleted.');
-            loadAds();
-            loadOverview();
-          } catch (err) {
-            notify('error', err.message);
+    tbody.querySelectorAll('[data-edit-ad]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const ad = adsCache.find((x) => String(x.id) === b.getAttribute('data-edit-ad'));
+        if (!ad) return;
+        document.getElementById('adEditId').value = ad.id;
+        document.getElementById('adTitle').value = ad.title;
+        document.getElementById('adAdvertiser').value = ad.advertiser_name;
+        document.getElementById('adPlacement').value = ad.placement;
+        document.getElementById('adStatus').value = ad.status;
+        document.getElementById('adDurationValue').value = ad.duration_value ? String(ad.duration_value) : '';
+        document.getElementById('adDurationUnit').value = ad.duration_unit || 'none';
+        document.getElementById('adDisplayOrder').value = String(ad.display_order || 0);
+        document.getElementById('adTargetUrl').value = ad.target_url || '';
+        document.getElementById('adImageUrl').value = ad.image_url || '';
+        const restartWrap = document.getElementById('adRestartWrap');
+        const restartChk = document.getElementById('adRestartDuration');
+        const expHint = document.getElementById('adExpiryHint');
+        if (restartChk) restartChk.checked = false;
+        if (restartWrap) restartWrap.hidden = false;
+        if (expHint) {
+          if (ad.expires_at_ms && Number(ad.expires_at_ms) <= Date.now()) {
+            expHint.textContent = 'Expired at: ' + (ad.expires_at || '') + ' (check above to relaunch timer)';
+          } else if (ad.expires_at) {
+            expHint.textContent = 'Current expiry: ' + ad.expires_at;
+          } else {
+            expHint.textContent = 'Current duration: Unlimited';
           }
-        });
+        }
+        updateAdImagePreview(ad.image_url || '');
+        document.getElementById('adSubmitBtn').textContent = 'Update Campaign';
+        document.getElementById('adCancelBtn').hidden = false;
       });
+    });
+
+    tbody.querySelectorAll('[data-del-ad]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        try {
+          await api('/api/admin_ads.php?id=' + b.getAttribute('data-del-ad'), { method: 'DELETE' });
+          notify('success', 'Advertisement deleted.');
+          loadAds();
+          loadOverview();
+        } catch (err) {
+          notify('error', err.message);
+        }
+      });
+    });
+  }
+
+  function resetAdFormState() {
+    if (!adForm) return;
+    adForm.reset();
+    document.getElementById('adEditId').value = '';
+    document.getElementById('adImageUrl').value = '';
+    document.getElementById('adDurationValue').value = '';
+    document.getElementById('adDurationUnit').value = 'none';
+    document.getElementById('adDisplayOrder').value = '0';
+    const restartWrap = document.getElementById('adRestartWrap');
+    const restartChk = document.getElementById('adRestartDuration');
+    if (restartWrap) restartWrap.hidden = true;
+    if (restartChk) restartChk.checked = false;
+    updateAdImagePreview('');
+    document.getElementById('adSubmitBtn').textContent = 'Create Campaign';
+    document.getElementById('adCancelBtn').hidden = true;
+  }
+
+  async function loadAds() {
+    try {
+      const data = await api('/api/admin_ads.php');
+      adsCache = data.ads || [];
+      renderAdsTable();
+      if (adsTickTimer) {
+        clearInterval(adsTickTimer);
+        adsTickTimer = null;
+      }
+      if (adsCache.some((ad) => ad.expires_at_ms)) {
+        adsTickTimer = setInterval(() => {
+          const panel = document.querySelector('[data-tab-panel="ads"]');
+          if (panel && !panel.hidden) {
+            renderAdsTable();
+          }
+        }, 1000);
+      }
     } catch (err) {
       notify('error', err.message);
     }
@@ -679,12 +1005,23 @@
     adForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const id = document.getElementById('adEditId').value;
+      const durUnit = document.getElementById('adDurationUnit').value;
+      const durValRaw = document.getElementById('adDurationValue').value.trim();
+      const durVal = durValRaw !== '' ? Math.max(0, Number(durValRaw)) : 0;
+      if (durUnit !== 'none' && durVal <= 0) {
+        notify('error', 'Enter a duration number greater than 0 or choose "No Expiry (Unlimited)".');
+        return;
+      }
       const payload = {
         id: id ? Number(id) : undefined,
         title: document.getElementById('adTitle').value.trim(),
         advertiser_name: document.getElementById('adAdvertiser').value.trim(),
         placement: document.getElementById('adPlacement').value,
         status: document.getElementById('adStatus').value,
+        duration_value: durVal,
+        duration_unit: durUnit,
+        display_order: Math.max(0, Number(document.getElementById('adDisplayOrder').value || 0)),
+        restart_duration: Boolean(document.getElementById('adRestartDuration')?.checked),
         target_url: document.getElementById('adTargetUrl').value.trim(),
         image_url: document.getElementById('adImageUrl').value.trim(),
       };
@@ -694,12 +1031,7 @@
           body: JSON.stringify(payload),
         });
         notify('success', id ? 'Advertisement updated.' : 'Advertisement created.');
-        adForm.reset();
-        document.getElementById('adEditId').value = '';
-        document.getElementById('adImageUrl').value = '';
-        updateAdImagePreview('');
-        document.getElementById('adSubmitBtn').textContent = 'Create Campaign';
-        document.getElementById('adCancelBtn').hidden = true;
+        resetAdFormState();
         loadAds();
         loadOverview();
       } catch (err) {
@@ -708,13 +1040,52 @@
     });
   }
 
-  document.getElementById('adCancelBtn')?.addEventListener('click', () => {
-    adForm.reset();
-    document.getElementById('adEditId').value = '';
-    document.getElementById('adImageUrl').value = '';
-    updateAdImagePreview('');
-    document.getElementById('adSubmitBtn').textContent = 'Create Campaign';
-    document.getElementById('adCancelBtn').hidden = true;
+  document.getElementById('adCancelBtn')?.addEventListener('click', resetAdFormState);
+
+  async function exportAdsPdfReport(triggerBtn) {
+    const placement = document.getElementById('adsExportPlacement')?.value || 'all';
+    const statusFilter = document.getElementById('adsExportStatus')?.value || 'all';
+    const params = new URLSearchParams({ placement, status: statusFilter });
+    const origText = triggerBtn ? triggerBtn.textContent : '';
+    if (triggerBtn) {
+      triggerBtn.disabled = true;
+      triggerBtn.textContent = 'Generating PDF...';
+    }
+    try {
+      const res = await fetch(urlFor('/api/admin_ads_export.php?' + params.toString()), {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Failed to export advertisement PDF report.');
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const today = new Date().toISOString().slice(0, 10);
+      link.href = blobUrl;
+      link.download = 'LASU-Ad-Statistics-Report-' + today + '.pdf';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      notify('success', 'Branded advertisement statistics PDF downloaded.');
+    } catch (err) {
+      notify('error', err.message || 'Unable to generate PDF report.');
+    } finally {
+      if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.textContent = origText;
+      }
+    }
+  }
+
+  document.getElementById('exportAdsPdfBtn')?.addEventListener('click', function () {
+    exportAdsPdfReport(this);
+  });
+  document.getElementById('exportAnalyticsAdsPdfBtn')?.addEventListener('click', function () {
+    exportAdsPdfReport(this);
   });
 
   // Performance & Readership Analytics

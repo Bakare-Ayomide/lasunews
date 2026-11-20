@@ -237,3 +237,184 @@ function record_ad_impressions(PDO $pdo, array $ads): void
     }
 }
 
+function compute_ad_expiry(?int $durationValue, string $durationUnit): array
+{
+    $validUnits = ['none', 'seconds', 'minutes', 'hours', 'days', 'months'];
+    $unit = in_array($durationUnit, $validUnits, true) ? $durationUnit : 'none';
+    $val = $durationValue !== null ? max(0, $durationValue) : 0;
+
+    if ($unit === 'none' || $val <= 0) {
+        return ['duration_value' => null, 'duration_unit' => 'none', 'expires_at' => null];
+    }
+
+    $val = min($val, 100000);
+    $now = new DateTimeImmutable('now');
+    $expiresAt = $now->modify("+{$val} {$unit}")->format('Y-m-d H:i:s');
+
+    return [
+        'duration_value' => $val,
+        'duration_unit'  => $unit,
+        'expires_at'     => $expiresAt,
+    ];
+}
+
+function ad_expires_at_ms(?string $expiresAt): ?int
+{
+    $raw = trim((string) ($expiresAt ?? ''));
+    if ($raw === '') {
+        return null;
+    }
+    try {
+        return (new DateTimeImmutable($raw))->getTimestamp() * 1000;
+    } catch (Throwable) {
+        return null;
+    }
+}
+
+function fetch_active_ads(PDO $pdo, ?string $placement = null): array
+{
+    $now = date('Y-m-d H:i:s');
+    $sql = "SELECT * FROM advertisements WHERE status = 'active' AND (expires_at IS NULL OR expires_at > ?)";
+    $params = [$now];
+    if ($placement !== null) {
+        $sql .= ' AND placement = ?';
+        $params[] = $placement;
+    }
+    $sql .= ' ORDER BY display_order ASC, created_at DESC, id DESC';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetchAll();
+}
+
+function is_rich_html(?string $content): bool
+{
+    if (!$content) {
+        return false;
+    }
+    return preg_match('/<(p|br|h[1-6]|ul|ol|li|blockquote|strong|b|em|i|u|s|a|img|figure|hr|div)\b/i', $content) === 1;
+}
+
+function sanitize_article_html(string $html): string
+{
+    $html = trim($html);
+    if ($html === '') {
+        return '';
+    }
+    if (!is_rich_html($html)) {
+        return $html;
+    }
+
+    if (!class_exists('DOMDocument')) {
+        $allowed = '<p><br><h1><h2><h3><h4><strong><b><em><i><u><s><ul><ol><li><blockquote><a><img><figure><figcaption><hr><div><span>';
+        $clean = strip_tags($html, $allowed);
+        $clean = preg_replace('/\son[a-z]+\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $clean) ?? $clean;
+        $clean = preg_replace('/(?:javascript|vbscript|data\s*:\s*text\/html)\s*:/i', '', $clean) ?? $clean;
+        return trim($clean);
+    }
+
+    $allowedTags = [
+        'p', 'br', 'h1', 'h2', 'h3', 'h4', 'strong', 'b', 'em', 'i', 'u', 's',
+        'strike', 'ul', 'ol', 'li', 'blockquote', 'a', 'img', 'figure', 'figcaption',
+        'hr', 'div', 'span',
+    ];
+    $dropCompletely = ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'svg', 'math'];
+
+    $prevErrors = libxml_use_internal_errors(true);
+    $doc = new DOMDocument('1.0', 'UTF-8');
+    $wrapped = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><div id="__lasu_rte_root">' . $html . '</div></body></html>';
+    $doc->loadHTML('<?xml encoding="utf-8" ?>' . $wrapped, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+    libxml_clear_errors();
+    libxml_use_internal_errors($prevErrors);
+
+    $root = $doc->getElementById('__lasu_rte_root');
+    if (!$root) {
+        return trim(strip_tags($html, '<p><br><strong><em><u><ul><ol><li><blockquote><a><h2><h3>'));
+    }
+
+    $sanitizeNode = static function (DOMNode $node) use (&$sanitizeNode, $allowedTags, $dropCompletely): void {
+        $children = [];
+        foreach ($node->childNodes as $child) {
+            $children[] = $child;
+        }
+
+        foreach ($children as $child) {
+            if ($child instanceof DOMElement) {
+                $tag = strtolower($child->tagName);
+                if (in_array($tag, $dropCompletely, true)) {
+                    $node->removeChild($child);
+                    continue;
+                }
+                if (!in_array($tag, $allowedTags, true)) {
+                    $sanitizeNode($child);
+                    while ($child->firstChild) {
+                        $node->insertBefore($child->firstChild, $child);
+                    }
+                    $node->removeChild($child);
+                    continue;
+                }
+
+                // Filter attributes safely
+                $attrs = [];
+                foreach ($child->attributes as $attr) {
+                    $attrs[] = $attr->name;
+                }
+                foreach ($attrs as $attrName) {
+                    $lower = strtolower($attrName);
+                    $val = trim($child->getAttribute($attrName));
+                    $keep = false;
+
+                    if ($tag === 'a' && $lower === 'href') {
+                        if (preg_match('#^(https?://|mailto:|/)#i', $val) === 1) {
+                            $keep = true;
+                        }
+                    } elseif ($tag === 'a' && in_array($lower, ['target', 'rel'], true)) {
+                        $keep = true;
+                    } elseif ($tag === 'img' && $lower === 'src') {
+                        if (preg_match('#^(https?://|/)#i', $val) === 1) {
+                            $keep = true;
+                        }
+                    } elseif ($tag === 'img' && $lower === 'alt') {
+                        $keep = true;
+                    } elseif ($lower === 'style') {
+                        if (preg_match('/text-align\s*:\s*(left|center|right|justify)/i', $val, $m) === 1) {
+                            $child->setAttribute('style', 'text-align:' . strtolower($m[1]) . ';');
+                            $keep = true;
+                        }
+                    }
+
+                    if (!$keep) {
+                        $child->removeAttribute($attrName);
+                    }
+                }
+
+                if ($tag === 'a' && $child->hasAttribute('href')) {
+                    $href = $child->getAttribute('href');
+                    if (preg_match('#^https?://#i', $href) === 1) {
+                        $child->setAttribute('target', '_blank');
+                        $child->setAttribute('rel', 'noopener noreferrer');
+                    }
+                }
+
+                if ($tag === 'img' && !$child->hasAttribute('src')) {
+                    $node->removeChild($child);
+                    continue;
+                }
+
+                $sanitizeNode($child);
+            } elseif ($child instanceof DOMComment) {
+                $node->removeChild($child);
+            }
+        }
+    };
+
+    $sanitizeNode($root);
+
+    $out = '';
+    foreach ($root->childNodes as $child) {
+        $out .= $doc->saveHTML($child);
+    }
+
+    return trim($out);
+}
+
+

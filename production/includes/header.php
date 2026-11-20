@@ -40,9 +40,11 @@ $loggedAdmin = function_exists('current_admin') ? current_admin() : null;
       </nav>
 
       <div class="header-actions">
-        <a href="<?= e(url_for($loggedAdmin ? '/admin/index.php' : '/admin/login.php')) ?>" class="btn btn-primary btn-sm hide-mobile">
-          <?= $loggedAdmin ? 'Dashboard' : 'Admin Portal' ?>
-        </a>
+        <?php if ($loggedAdmin): ?>
+          <a href="<?= e(url_for('/admin/index.php')) ?>" class="btn btn-primary btn-sm hide-mobile">
+            Admin Portal
+          </a>
+        <?php endif; ?>
         <button type="button" id="mobileMenuBtn" class="mobile-menu-btn" aria-label="Toggle navigation" aria-expanded="false">
           <span class="menu-bars"></span>
         </button>
@@ -56,9 +58,11 @@ $loggedAdmin = function_exists('current_admin') ? current_admin() : null;
       <a href="<?= e(url_for('/index.php#about')) ?>" class="mobile-nav-link">About</a>
       <a href="<?= e(url_for('/index.php#contact')) ?>" class="mobile-nav-link">Contact</a>
       <a href="<?= e(url_for('/account.php')) ?>" class="mobile-nav-link">Reader Account</a>
-      <a href="<?= e(url_for($loggedAdmin ? '/admin/index.php' : '/admin/login.php')) ?>" class="btn btn-primary btn-block">
-        <?= $loggedAdmin ? 'Admin Dashboard' : 'Admin Portal' ?>
-      </a>
+      <?php if ($loggedAdmin): ?>
+        <a href="<?= e(url_for('/admin/index.php')) ?>" class="btn btn-primary btn-block">
+          Admin Portal
+        </a>
+      <?php endif; ?>
     </div>
   </header>
   <main>

@@ -110,7 +110,9 @@ require __DIR__ . '/includes/header.php';
           <?php if ($q !== '' || $categorySlug !== 'all'): ?>
             <a href="<?= e(url_for('/news.php')) ?>" class="btn btn-outline btn-sm">Reset Filters</a>
           <?php endif; ?>
-          <a href="<?= e(url_for('/admin/login.php')) ?>" class="btn btn-primary btn-sm">Admin Portal</a>
+          <?php if ($loggedAdmin): ?>
+            <a href="<?= e(url_for('/admin/index.php')) ?>" class="btn btn-primary btn-sm">Admin Portal</a>
+          <?php endif; ?>
         </div>
       </div>
     <?php else: ?>

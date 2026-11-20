@@ -40,6 +40,56 @@ function getSessionCookieOptions(req: express.Request, maxAge: number) {
   };
 }
 
+const VALID_AD_UNITS = ['none', 'seconds', 'minutes', 'hours', 'days', 'months'] as const;
+type AdDurationUnit = (typeof VALID_AD_UNITS)[number];
+
+function computeAdExpiry(durationValue: number | null | undefined, durationUnit: string): {
+  duration_value: number | null;
+  duration_unit: AdDurationUnit;
+  expires_at: string | null;
+} {
+  const unit: AdDurationUnit = (VALID_AD_UNITS as readonly string[]).includes(durationUnit)
+    ? (durationUnit as AdDurationUnit)
+    : 'none';
+  const rawVal = typeof durationValue === 'number' && Number.isFinite(durationValue) ? Math.floor(durationValue) : 0;
+  const val = Math.max(0, Math.min(rawVal, 100000));
+
+  if (unit === 'none' || val <= 0) {
+    return { duration_value: null, duration_unit: 'none', expires_at: null };
+  }
+
+  const target = new Date();
+  if (unit === 'seconds') target.setUTCSeconds(target.getUTCSeconds() + val);
+  else if (unit === 'minutes') target.setUTCMinutes(target.getUTCMinutes() + val);
+  else if (unit === 'hours') target.setUTCHours(target.getUTCHours() + val);
+  else if (unit === 'days') target.setUTCDate(target.getUTCDate() + val);
+  else if (unit === 'months') target.setUTCMonth(target.getUTCMonth() + val);
+
+  const expiresAt = target.toISOString().replace('T', ' ').slice(0, 19);
+  return { duration_value: val, duration_unit: unit, expires_at: expiresAt };
+}
+
+function parseSqliteUtcMs(ts: string | null | undefined): number | null {
+  if (!ts) return null;
+  const parsed = Date.parse(ts.replace(' ', 'T') + 'Z');
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function enrichAdRow<T extends Record<string, unknown>>(ad: T): T & {
+  expires_at_ms: number | null;
+  is_expired: number;
+  remaining_seconds: number | null;
+} {
+  const expMs = parseSqliteUtcMs(typeof ad.expires_at === 'string' ? ad.expires_at : null);
+  const nowMs = Date.now();
+  return {
+    ...ad,
+    expires_at_ms: expMs,
+    is_expired: expMs !== null && expMs <= nowMs ? 1 : 0,
+    remaining_seconds: expMs !== null ? Math.max(0, Math.floor((expMs - nowMs) / 1000)) : null,
+  };
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -190,9 +240,15 @@ async function startServer() {
       };
     });
 
-    const ads = db
-      .prepare("SELECT * FROM advertisements WHERE status = 'active' ORDER BY created_at DESC")
-      .all() as Array<{ id: number; placement: string }>;
+    const ads = (
+      db
+        .prepare(
+          `SELECT * FROM advertisements
+           WHERE status = 'active' AND (expires_at IS NULL OR expires_at > datetime('now'))
+           ORDER BY display_order ASC, created_at DESC, id DESC`
+        )
+        .all() as Array<Record<string, unknown> & { id: number; placement: string }>
+    ).map((ad) => enrichAdRow(ad));
 
     if (ads.length > 0) {
       const incAd = db.prepare('UPDATE advertisements SET impressions = impressions + 1 WHERE id = ?');
@@ -237,7 +293,10 @@ async function startServer() {
   app.get('/api/public/ads/:id/click', (req, res) => {
     const id = Number(req.params.id);
     const ad = db
-      .prepare("SELECT id, target_url FROM advertisements WHERE id = ? AND status = 'active'")
+      .prepare(
+        `SELECT id, target_url FROM advertisements
+         WHERE id = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > datetime('now'))`
+      )
       .get(id) as { id: number; target_url: string } | undefined;
 
     if (!ad) {
@@ -373,9 +432,16 @@ async function startServer() {
       )
       .all(article.id, article.category_id);
 
-    const sidebarAds = db
-      .prepare("SELECT * FROM advertisements WHERE status = 'active' AND placement = 'sidebar_box' LIMIT 2")
-      .all() as Array<{ id: number }>;
+    const sidebarAds = (
+      db
+        .prepare(
+          `SELECT * FROM advertisements
+           WHERE status = 'active' AND placement = 'sidebar_box'
+             AND (expires_at IS NULL OR expires_at > datetime('now'))
+           ORDER BY display_order ASC, created_at DESC, id DESC`
+        )
+        .all() as Array<Record<string, unknown> & { id: number }>
+    ).map((ad) => enrichAdRow(ad));
 
     if (sidebarAds.length > 0) {
       const incAd = db.prepare('UPDATE advertisements SET impressions = impressions + 1 WHERE id = ?');
@@ -500,7 +566,8 @@ async function startServer() {
     }
 
     const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
-    if (existing) {
+    const existingAdmin = db.prepare('SELECT id FROM admins WHERE email = ?').get(email);
+    if (existing || existingAdmin) {
       res.status(409).json({ error: 'An account with this email already exists.' });
       return;
     }
@@ -555,6 +622,41 @@ async function startServer() {
     const sessionId = createUserSession(user.id);
     res.cookie(USER_COOKIE_NAME, sessionId, getSessionCookieOptions(req, 7 * 24 * 60 * 60 * 1000));
 
+    let adminPayload: {
+      admin: { id: number; full_name: string; email: string; role: 'super_admin' | 'editor' };
+      sessionToken: string;
+      csrfToken: string;
+    } | null = null;
+
+    const matchedAdmin = db
+      .prepare('SELECT id, full_name, email, password_hash, role, is_active FROM admins WHERE email = ?')
+      .get(email) as
+      | {
+          id: number;
+          full_name: string;
+          email: string;
+          password_hash: string;
+          role: 'super_admin' | 'editor';
+          is_active: number;
+        }
+      | undefined;
+
+    if (matchedAdmin && matchedAdmin.is_active === 1 && bcrypt.compareSync(password, matchedAdmin.password_hash)) {
+      const adminSess = createAdminSession(matchedAdmin.id);
+      logActivity(matchedAdmin.id, 'login', 'admin', matchedAdmin.id, 'Signed in via Reader Account');
+      res.cookie(SESSION_COOKIE_NAME, adminSess.sessionId, getSessionCookieOptions(req, 12 * 60 * 60 * 1000));
+      adminPayload = {
+        admin: {
+          id: matchedAdmin.id,
+          full_name: matchedAdmin.full_name,
+          email: matchedAdmin.email,
+          role: matchedAdmin.role,
+        },
+        sessionToken: adminSess.sessionId,
+        csrfToken: adminSess.csrfToken,
+      };
+    }
+
     res.json({
       userToken: sessionId,
       user: {
@@ -564,11 +666,17 @@ async function startServer() {
         department: user.department,
         is_active: user.is_active,
       },
+      ...(adminPayload ? { adminAuth: adminPayload } : {}),
     });
   });
 
   app.post('/api/users/logout', (req, res) => {
     const session = getUserFromRequest(req);
+    const adminSession = getSessionFromRequest(req);
+    if (session && adminSession && session.user.email.toLowerCase() === adminSession.admin.email.toLowerCase()) {
+      destroySession(adminSession.sessionId);
+      res.clearCookie(SESSION_COOKIE_NAME, getSessionCookieOptions(req, 0));
+    }
     if (session) {
       destroyUserSession(session.sessionId);
     }
@@ -667,16 +775,49 @@ async function startServer() {
 
   app.get('/api/auth/me', (req, res) => {
     const session = getSessionFromRequest(req);
-    if (!session) {
-      res.status(401).json({ authenticated: false });
+    if (session) {
+      res.json({
+        authenticated: true,
+        admin: session.admin,
+        sessionToken: session.sessionId,
+        csrfToken: session.csrfToken,
+      });
       return;
     }
-    res.json({
-      authenticated: true,
-      admin: session.admin,
-      sessionToken: session.sessionId,
-      csrfToken: session.csrfToken,
-    });
+
+    const userSess = getUserFromRequest(req);
+    if (userSess && userSess.user.is_active === 1) {
+      const matchedAdmin = db
+        .prepare('SELECT id, full_name, email, role, is_active FROM admins WHERE email = ?')
+        .get(userSess.user.email.toLowerCase().trim()) as
+        | {
+            id: number;
+            full_name: string;
+            email: string;
+            role: 'super_admin' | 'editor';
+            is_active: number;
+          }
+        | undefined;
+
+      if (matchedAdmin && matchedAdmin.is_active === 1 && (matchedAdmin.role === 'editor' || matchedAdmin.role === 'super_admin')) {
+        const adminSess = createAdminSession(matchedAdmin.id);
+        res.cookie(SESSION_COOKIE_NAME, adminSess.sessionId, getSessionCookieOptions(req, 12 * 60 * 60 * 1000));
+        res.json({
+          authenticated: true,
+          admin: {
+            id: matchedAdmin.id,
+            full_name: matchedAdmin.full_name,
+            email: matchedAdmin.email,
+            role: matchedAdmin.role,
+          },
+          sessionToken: adminSess.sessionId,
+          csrfToken: adminSess.csrfToken,
+        });
+        return;
+      }
+    }
+
+    res.status(401).json({ authenticated: false });
   });
 
   // ==========================================
@@ -711,7 +852,7 @@ async function startServer() {
       .prepare("SELECT COUNT(*) AS pending_comments FROM comments WHERE status = 'pending'")
       .get() as { pending_comments: number };
     const activeAds = db
-      .prepare("SELECT COUNT(*) AS active_ads FROM advertisements WHERE status = 'active'")
+      .prepare("SELECT COUNT(*) AS active_ads FROM advertisements WHERE status = 'active' AND (expires_at IS NULL OR expires_at > datetime('now'))")
       .get() as { active_ads: number };
     const unreadMessages = db
       .prepare('SELECT COUNT(*) AS unread_messages FROM contact_messages WHERE is_read = 0')
@@ -818,10 +959,30 @@ async function startServer() {
     res.json({ articles });
   });
 
+  const sanitizeArticleHtml = (raw: string): string => {
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    if (!/<(p|br|h[1-6]|ul|ol|li|blockquote|strong|b|em|i|u|s|a|img|figure|hr|div)\b/i.test(trimmed)) {
+      return trimmed;
+    }
+    return trimmed
+      .replace(/<(script|style|iframe|object|embed|form|input|button|svg|math)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+      .replace(/<(script|style|iframe|object|embed|form|input|button|svg|math)\b[^>]*\/?>/gi, '')
+      .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(/(?:javascript|vbscript|data\s*:\s*text\/html)\s*:/gi, '');
+  };
+
+  const stripHtmlText = (raw: string): string =>
+    raw
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
   app.post('/api/admin/articles', requireAdminAuth, (req: AuthenticatedRequest, res) => {
     const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
     const excerpt = typeof req.body.excerpt === 'string' ? req.body.excerpt.trim() : '';
-    const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
+    const content = typeof req.body.content === 'string' ? sanitizeArticleHtml(req.body.content) : '';
     const featuredImage = typeof req.body.featured_image === 'string' ? req.body.featured_image.trim() : '';
     const categoryId = Number(req.body.category_id);
     const status = req.body.status === 'published' ? 'published' : 'draft';
@@ -838,8 +999,8 @@ async function startServer() {
       res.status(400).json({ error: 'Summary/excerpt must be between 10 and 500 characters.' });
       return;
     }
-    if (content.length < 20) {
-      res.status(400).json({ error: 'Article body content must be at least 20 characters.' });
+    if (stripHtmlText(content).length < 20) {
+      res.status(400).json({ error: 'Article body content must be at least 20 characters of readable text.' });
       return;
     }
 
@@ -917,7 +1078,7 @@ async function startServer() {
 
     const title = typeof req.body.title === 'string' ? req.body.title.trim() : '';
     const excerpt = typeof req.body.excerpt === 'string' ? req.body.excerpt.trim() : '';
-    const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
+    const content = typeof req.body.content === 'string' ? sanitizeArticleHtml(req.body.content) : '';
     const featuredImage = typeof req.body.featured_image === 'string' ? req.body.featured_image.trim() : '';
     const categoryId = Number(req.body.category_id);
     const status = req.body.status === 'published' ? 'published' : 'draft';
@@ -934,8 +1095,8 @@ async function startServer() {
       res.status(400).json({ error: 'Summary/excerpt must be between 10 and 500 characters.' });
       return;
     }
-    if (content.length < 20) {
-      res.status(400).json({ error: 'Article body content must be at least 20 characters.' });
+    if (stripHtmlText(content).length < 20) {
+      res.status(400).json({ error: 'Article body content must be at least 20 characters of readable text.' });
       return;
     }
 
@@ -1452,7 +1613,11 @@ async function startServer() {
 
   // Advertisement Management CRUD
   app.get('/api/admin/ads', requireAdminAuth, (_req, res) => {
-    const ads = db.prepare('SELECT * FROM advertisements ORDER BY created_at DESC').all();
+    const ads = (
+      db
+        .prepare('SELECT * FROM advertisements ORDER BY placement ASC, display_order ASC, created_at DESC, id DESC')
+        .all() as Array<Record<string, unknown>>
+    ).map((ad) => enrichAdRow(ad));
     res.json({ ads });
   });
 
@@ -1465,9 +1630,15 @@ async function startServer() {
       ? req.body.placement
       : 'sidebar_box';
     const status = req.body.status === 'paused' ? 'paused' : 'active';
+    const displayOrder = Math.max(0, parseInt(String(req.body.display_order ?? '0'), 10) || 0);
+    const durationUnit = typeof req.body.duration_unit === 'string' ? req.body.duration_unit : 'none';
+    const durationValue =
+      req.body.duration_value !== undefined && req.body.duration_value !== '' && req.body.duration_value !== null
+        ? Math.max(0, parseInt(String(req.body.duration_value), 10) || 0)
+        : 0;
 
-    if (title.length < 3 || title.length > 140) {
-      res.status(400).json({ error: 'Campaign title must be 3–140 characters.' });
+    if (title.length < 3 || title.length > 160) {
+      res.status(400).json({ error: 'Campaign title must be 3–160 characters.' });
       return;
     }
     if (advertiserName.length < 2 || advertiserName.length > 120) {
@@ -1479,22 +1650,43 @@ async function startServer() {
       return;
     }
 
+    const dur = computeAdExpiry(durationValue, durationUnit);
+
     const result = db
       .prepare(
-        `INSERT INTO advertisements (title, advertiser_name, image_url, target_url, placement, status)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO advertisements (title, advertiser_name, image_url, target_url, placement, status, duration_value, duration_unit, expires_at, display_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(title, advertiserName, imageUrl, targetUrl, placement, status);
+      .run(
+        title,
+        advertiserName,
+        imageUrl,
+        targetUrl,
+        placement,
+        status,
+        dur.duration_value,
+        dur.duration_unit,
+        dur.expires_at,
+        displayOrder
+      );
 
     const newId = Number(result.lastInsertRowid);
     logActivity(req.admin!.id, 'create', 'advertisement', newId, `Created ad campaign "${title}" (${placement})`);
-    const ad = db.prepare('SELECT * FROM advertisements WHERE id = ?').get(newId);
-    res.status(201).json({ ad });
+    const ad = db.prepare('SELECT * FROM advertisements WHERE id = ?').get(newId) as Record<string, unknown>;
+    res.status(201).json({ ad: enrichAdRow(ad) });
   });
 
   app.put('/api/admin/ads/:id', requireAdminAuth, (req: AuthenticatedRequest, res) => {
     const id = Number(req.params.id);
-    const existing = db.prepare('SELECT id FROM advertisements WHERE id = ?').get(id);
+    const existing = db.prepare('SELECT * FROM advertisements WHERE id = ?').get(id) as
+      | {
+          id: number;
+          duration_value: number | null;
+          duration_unit: string | null;
+          expires_at: string | null;
+          display_order: number | null;
+        }
+      | undefined;
     if (!existing) {
       res.status(404).json({ error: 'Advertisement not found.' });
       return;
@@ -1508,20 +1700,73 @@ async function startServer() {
       ? req.body.placement
       : 'sidebar_box';
     const status = req.body.status === 'paused' ? 'paused' : 'active';
+    const displayOrder = Math.max(
+      0,
+      parseInt(String(req.body.display_order ?? existing.display_order ?? '0'), 10) || 0
+    );
+    const durationUnit = typeof req.body.duration_unit === 'string' ? req.body.duration_unit : 'none';
+    const durationValue =
+      req.body.duration_value !== undefined && req.body.duration_value !== '' && req.body.duration_value !== null
+        ? Math.max(0, parseInt(String(req.body.duration_value), 10) || 0)
+        : 0;
+    const restartDuration = Boolean(req.body.restart_duration);
 
     if (title.length < 3 || advertiserName.length < 2) {
       res.status(400).json({ error: 'Valid title and advertiser name are required.' });
       return;
     }
+    if (targetUrl && !/^https?:\/\/.+/.test(targetUrl)) {
+      res.status(400).json({ error: 'Target URL must begin with http:// or https://.' });
+      return;
+    }
+
+    const prevVal = Number(existing.duration_value ?? 0);
+    const prevUnit = existing.duration_unit || 'none';
+    const durationChanged = durationUnit !== prevUnit || durationValue !== prevVal;
+
+    let finalVal: number | null;
+    let finalUnit: AdDurationUnit;
+    let finalExpiresAt: string | null;
+
+    if (durationUnit === 'none' || durationValue <= 0) {
+      finalVal = null;
+      finalUnit = 'none';
+      finalExpiresAt = null;
+    } else if (restartDuration || durationChanged) {
+      const dur = computeAdExpiry(durationValue, durationUnit);
+      finalVal = dur.duration_value;
+      finalUnit = dur.duration_unit;
+      finalExpiresAt = dur.expires_at;
+    } else {
+      finalVal = existing.duration_value;
+      finalUnit = (VALID_AD_UNITS as readonly string[]).includes(prevUnit)
+        ? (prevUnit as AdDurationUnit)
+        : 'none';
+      finalExpiresAt = existing.expires_at;
+    }
 
     db.prepare(
-      `UPDATE advertisements SET title = ?, advertiser_name = ?, image_url = ?, target_url = ?, placement = ?, status = ?
+      `UPDATE advertisements
+       SET title = ?, advertiser_name = ?, image_url = ?, target_url = ?, placement = ?, status = ?,
+           duration_value = ?, duration_unit = ?, expires_at = ?, display_order = ?
        WHERE id = ?`
-    ).run(title, advertiserName, imageUrl, targetUrl, placement, status, id);
+    ).run(
+      title,
+      advertiserName,
+      imageUrl,
+      targetUrl,
+      placement,
+      status,
+      finalVal,
+      finalUnit,
+      finalExpiresAt,
+      displayOrder,
+      id
+    );
 
     logActivity(req.admin!.id, 'update', 'advertisement', id, `Updated ad campaign "${title}" (${status})`);
-    const ad = db.prepare('SELECT * FROM advertisements WHERE id = ?').get(id);
-    res.json({ ad });
+    const ad = db.prepare('SELECT * FROM advertisements WHERE id = ?').get(id) as Record<string, unknown>;
+    res.json({ ad: enrichAdRow(ad) });
   });
 
   app.delete('/api/admin/ads/:id', requireAdminAuth, (req: AuthenticatedRequest, res) => {
